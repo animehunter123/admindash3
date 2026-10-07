@@ -1,6 +1,8 @@
 use crate::dashboard_data::{ADMIN_PASSWORD, ADMIN_USERNAME, ButtonRowView, DashboardPayload};
 use crate::data_navbar::NavItem;
-use crate::{ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, IFRAME_URL};
+use crate::{
+    ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, IFRAME_URL,
+};
 
 use dioxus::prelude::*;
 use dioxus_web::WebEventExt;

@@ -2,7 +2,9 @@ use crate::dashboard_data::{
     AdminCredentials, ButtonCreateInput, ButtonRenameInput, ButtonRowInput, ButtonRowView,
     DashboardPayload, RowKind,
 };
-use crate::{ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, HISTORY_PAGE};
+use crate::{
+    ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, HISTORY_PAGE,
+};
 use dioxus::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -117,6 +119,11 @@ impl RowDraft {
 
 #[component]
 pub fn Buttons(payload: DashboardPayload) -> Element {
+    // Read the current authentication state once for this render.  The rest
+    // of this component uses `is_admin` to decide which editing controls,
+    // drag/drop behavior, and admin actions should be available.
+    let is_admin = ADMIN_AUTH.read().is_admin();
+
     let mut selected_button_name = use_signal(|| None::<String>);
     let mut button_editor = use_signal(|| None::<ButtonEditorState>);
     let mut row_editor = use_signal(|| None::<RowEditorState>);
@@ -131,11 +138,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
     let mut dragging_button_name = use_signal(|| None::<String>);
     let mut reorder_confirmation = use_signal(|| None::<ReorderConfirmation>);
     let mut status_message = use_signal(|| None::<String>);
-
-    // Admin status comes from the global credentials so the edit pencils and
-    // drag handles appear immediately after login, without waiting for the
-    // dashboard refresh to finish.
-    let is_admin = ADMIN_AUTH().is_admin();
 
     // Auto-sort is a system-wide server setting. The DashboardPayload already
     // contains it, so SSR can render the correct order immediately on F5.
@@ -342,13 +344,43 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                 }
                                 p {
                                     class: "mt-1 max-w-3xl text-sm leading-6 text-blue-800",
-                                    "You are in edit mode. Use the five controls below to manage the dashboard. Changes are saved to the dashboard data immediately."
+                                    "You are in edit mode. Use the five controls below to manage the dashboard. Changes are saved immediately. Export ZIP creates a server-side backup of the JSON files and dashboard history."
                                 }
                             }
 
-                            div {
-                                class: "shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800 shadow-sm",
-                                "✎ Edit • ⠿ Drag • + Add"
+                            button {
+                                class: "shrink-0 rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60",
+                                title: "Download a ZIP containing the dashboard JSON files and dashboard_history folder.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| async move {
+                                    mutation_error.set(None);
+                                    status_message.set(None);
+                                    mutation_busy.set(true);
+
+                                    match export_dashboard_zip_server(ADMIN_AUTH()).await {
+                                        Ok((bytes, filename)) => {
+                                            #[cfg(target_arch = "wasm32")]
+                                            {
+                                                download_zip_in_browser(bytes, filename);
+                                                status_message.set(Some(
+                                                    "Dashboard export ZIP downloaded.".to_string(),
+                                                ));
+                                            }
+
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            {
+                                                let _ = (bytes, filename);
+                                                status_message.set(Some(
+                                                    "Dashboard export created.".to_string(),
+                                                ));
+                                            }
+                                        }
+                                        Err(error) => mutation_error.set(Some(error.to_string())),
+                                    }
+
+                                    mutation_busy.set(false);
+                                },
+                                "⇩ Export ZIP"
                             }
                         }
                     }
@@ -629,19 +661,9 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                         }
                                     },
                                     class: if is_admin {
-                                        "
-                                            block w-full rounded-md bg-gray-300 px-4 py-6 pr-14 text-center
-                                            font-medium text-gray-800 shadow-sm transition hover:scale-105
-                                            hover:bg-gray-400 hover:shadow-md active:scale-95
-                                            truncate overflow-hidden whitespace-nowrap
-                                        "
+                                        "block w-full rounded-md bg-gray-300 px-4 py-6 pr-14 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
                                     } else {
-                                        "
-                                            block w-full rounded-md bg-gray-300 px-4 py-3 text-center
-                                            font-medium text-gray-800 shadow-sm transition hover:scale-105
-                                            hover:bg-gray-400 hover:shadow-md active:scale-95
-                                            truncate overflow-hidden whitespace-nowrap
-                                        "
+                                        "block w-full rounded-md bg-gray-300 px-4 py-3 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
                                     },
                                     onclick: {
                                         let button_name = button_name.clone();
@@ -899,6 +921,7 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                                             }));
                                                         }
                                                     },
+
                                                     if is_admin {
                                                         div {
                                                             class: "absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-800",
@@ -1133,7 +1156,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                     mutation_error.set(None);
 
                     let credentials = ADMIN_AUTH();
-
                     let result = match editor.mode {
                         ButtonEditorMode::Create => {
                             create_button_server(
@@ -2141,6 +2163,81 @@ impl ButtonRowView {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn download_zip_in_browser(bytes: Vec<u8>, filename: String) {
+    use js_sys::{Array, Uint8Array};
+    use wasm_bindgen::JsCast;
+    use web_sys::{Blob, HtmlElement, Url};
+
+    // The ZIP is already generated on the server.  This tiny browser-side
+    // section only turns the returned bytes into a temporary Blob URL and
+    // clicks a hidden anchor.  There is no polling or filesystem scanning.
+    let array = Uint8Array::from(bytes.as_slice());
+    let parts = Array::new();
+    parts.push(&array);
+
+    let Ok(blob) = Blob::new_with_u8_array_sequence(&parts) else {
+        return;
+    };
+    let Ok(url) = Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
+
+    let Some(window) = web_sys::window() else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    let Some(document) = window.document() else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    let Ok(element) = document.create_element("a") else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    let Ok(anchor) = element.dyn_into::<HtmlElement>() else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+
+    let _ = anchor.set_attribute("href", &url);
+    let _ = anchor.set_attribute("download", &filename);
+    anchor.click();
+
+    // Release the temporary browser object shortly after the click so the ZIP
+    // does not remain pinned in browser memory indefinitely.
+    let callback = wasm_bindgen::closure::Closure::once(Box::new(move || {
+        let _ = Url::revoke_object_url(&url);
+    }) as Box<dyn FnOnce()>);
+
+    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+        callback.as_ref().unchecked_ref(),
+        1_000,
+    );
+    callback.forget();
+}
+
+#[server]
+async fn export_dashboard_zip_server(
+    credentials: AdminCredentials,
+) -> Result<(Vec<u8>, String), ServerFnError> {
+    if !credentials.is_admin() {
+        return Err(ServerFnError::ServerError {
+            message: "Admin login is required for this action.".to_string(),
+            code: 403,
+            details: None,
+        });
+    }
+
+    crate::dashboard_data::export_dashboard_zip(&credentials).map_err(|error| {
+        ServerFnError::ServerError {
+            message: error.to_string(),
+            code: 500,
+            details: None,
+        }
+    })
+}
+
 #[server]
 async fn create_button_server(
     credentials: AdminCredentials,
@@ -2353,3 +2450,4 @@ async fn set_autosort_server(
         }
     })
 }
+
