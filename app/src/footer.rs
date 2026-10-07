@@ -79,7 +79,9 @@ pub fn Footer() -> Element {
     rsx! {
 
         footer {
-            class: "w-full mt-8 py-4
+            // Keep the footer as a fixed-height sibling of the scrolling
+            // main area.  The parent page uses a viewport-sized flex column.
+            class: "w-full shrink-0 mt-8 py-4
                     border-t border-gray-700
                     bg-gray-900
                     text-gray-400

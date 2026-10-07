@@ -695,6 +695,58 @@ pub fn rename_button(
 }
 
 // -----------------------------------------------------------------------------
+// CLONE BUTTON
+// -----------------------------------------------------------------------------
+//
+// Clone the complete button group and insert it immediately after the original.
+//
+// The new name is generated on the server so the JSON mutation is safe even
+// when names such as `Servers-1`, `Servers-2`, etc. already exist.
+//
+// Example:
+//
+//     Servers
+//     Servers-1
+//     Servers-2
+//
+// If `Servers-1` is cloned, the next available numbered name is `Servers-2`.
+// The suffix is always chosen on the server so no existing name is overwritten.
+// -----------------------------------------------------------------------------
+
+pub fn clone_button(
+    path: &Path,
+    credentials: &AdminCredentials,
+    button_name: &str,
+) -> Result<String> {
+    ensure_admin(credentials)?;
+
+    let mut document = read_dashboard_document(path)?;
+
+    let Some(index) = document
+        .buttons
+        .iter()
+        .position(|button| button.name == button_name)
+    else {
+        bail!("Could not find button '{button_name}'.");
+    };
+
+    let existing_names = document.buttons.iter().map(|button| button.name.as_str());
+
+    let cloned_name = unique_clone_name(button_name, existing_names);
+
+    let mut cloned_button = document.buttons[index].clone();
+    cloned_button.name = cloned_name.clone();
+
+    // `insert(index + 1, ...)` is what makes the clone appear immediately
+    // after the source in the stored JSON order.
+    document.buttons.insert(index + 1, cloned_button);
+
+    write_dashboard_document(path, &document)?;
+
+    Ok(cloned_name)
+}
+
+// -----------------------------------------------------------------------------
 // DELETE BUTTON
 // -----------------------------------------------------------------------------
 
@@ -778,6 +830,64 @@ pub fn save_row(
 // -----------------------------------------------------------------------------
 // DELETE ROW
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// CLONE ROW
+// -----------------------------------------------------------------------------
+//
+// Clone one row and insert it immediately after the original row.
+//
+// The clone gets a unique suffix generated from the original row name.  The
+// entire row is cloned, including URL, hashtags, comments, secrets, and whether
+// it is a divider or link.
+//
+// Example:
+//
+//     Proxmox
+//     Proxmox-1
+// -----------------------------------------------------------------------------
+
+pub fn clone_row(
+    path: &Path,
+    credentials: &AdminCredentials,
+    button_name: &str,
+    row_name: &str,
+) -> Result<String> {
+    ensure_admin(credentials)?;
+
+    let mut document = read_dashboard_document(path)?;
+
+    let Some(button) = document
+        .buttons
+        .iter_mut()
+        .find(|button| button.name == button_name)
+    else {
+        bail!("Could not find button '{button_name}'.");
+    };
+
+    let Some(index) = button.rows.iter().position(|row| row.name() == row_name) else {
+        bail!("Could not find row '{row_name}' in button '{button_name}'.");
+    };
+
+    let existing_names = button.rows.iter().map(|row| row.name());
+
+    let cloned_name = unique_clone_name(row_name, existing_names);
+
+    let mut cloned_row = button.rows[index].clone();
+
+    match &mut cloned_row {
+        ButtonRow::Divider { name } | ButtonRow::Link { name, .. } => {
+            *name = cloned_name.clone();
+        }
+    }
+
+    // Insert directly after the source row so the clone is truly in-place.
+    button.rows.insert(index + 1, cloned_row);
+
+    write_dashboard_document(path, &document)?;
+
+    Ok(cloned_name)
+}
 
 pub fn delete_row(
     path: &Path,
@@ -1470,6 +1580,63 @@ fn row_from_input(button_name: &str, input: ButtonRowInput) -> Result<ButtonRow>
             })
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// UNIQUE CLONE NAME
+// -----------------------------------------------------------------------------
+//
+// Generate:
+//
+//     original
+//     original-1
+//     original-2
+//     original-3
+//
+// The function accepts an iterator so it can be used for both button names and
+// row names without duplicating the collision logic.
+//
+// The first available suffix wins.  We never replace or rename an existing
+// object while cloning.
+// -----------------------------------------------------------------------------
+
+fn unique_clone_name<'a, I>(original_name: &str, existing_names: I) -> String
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let existing_names: std::collections::BTreeSet<&str> = existing_names.into_iter().collect();
+
+    // If the source already ends in "-<number>", continue that number rather
+    // than producing names such as "Ubuntu-1-1".
+    //
+    //     Ubuntu   -> Ubuntu-1
+    //     Ubuntu   -> Ubuntu-2
+    //     Ubuntu-1 -> Ubuntu-2
+    //     Ubuntu-2 -> Ubuntu-3
+    //
+    // This also means cloning an older clone naturally continues the same
+    // numbering sequence.
+    let (base_name, starting_number) = match original_name.rsplit_once('-') {
+        Some((base, suffix))
+            if !base.is_empty()
+                && !suffix.is_empty()
+                && suffix.chars().all(|c| c.is_ascii_digit()) =>
+        {
+            let number = suffix.parse::<u64>().unwrap_or(0);
+            (base, number.saturating_add(1))
+        }
+        _ => (original_name, 1),
+    };
+
+    for number in starting_number.. {
+        let candidate = format!("{base_name}-{number}");
+
+        if !existing_names.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+
+    unreachable!("The clone-name counter cannot overflow in practical use.")
 }
 
 // -----------------------------------------------------------------------------

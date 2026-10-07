@@ -75,13 +75,14 @@ The jist of it is basically...
 
 @@@IMPORTANT@@@
 - if you F5 AFTER LOGGING IN AS ADMIN, there is a flicker. Need to figure out what use_server_future or thingy is causing this.
-- UI Change > Move the +Button +Tags +JSON Check +History +Autosort off to overwrite the AdminUsage top right card of "Edit Drag +Add" so that its clean, also make it responsive in case the browser is resized vertically to be phone size.
-- add a comments field to the url rows that is allows a long string of text
 - add a new! icon that will popup if a history diff was made within 24 hours ago. So that if a button is renamed that button will have a icon for this (not sure if this is useful).
 - BUGFOUND >> The upstream WASM has changed, and v2.4.3 was compiled on rust version old, so in order to compile --- WE MUST USE " rustup override set 1.98.1", I need to update and test the new cargo.toml ASAP to make sure this still IS NOT a problem. (wasm-bindgen does not compile on 1.99.1 at the moment!!!!!!!!!!!!!"
-- the history page should have a delete button per file card as well 
-- the searchresults should have a pencil only appear if you hover over to allow directly editing that url (when logged in as admin)
+- MAKE THE COMMENTS FIELD a WYSIG to support images for url rows that is allows a long string of text + images attachments (or a separate attachments)
+
+- UI Change > Move the +Button +Tags +JSON Check +History +Autosort off to overwrite the AdminUsage top right card of "Edit Drag +Add" so that its clean, also make it responsive in case the browser is resized vertically to be phone size.
 - bug found: footer is not visible after logging in (it gets pushed off screen, and you have to scroll to see it).
+- featreq: For the Edit Button and the Edit Row modals, we want a Clone Button/Clone Row which will clone it in-place in the json safely and correctly appending a -1 or updated number to the end that  is unique.
+
 
 v3, v4, v5:
 - refactor code so that there is a "./src/adminbuttons" module, and future cp/rm modules
