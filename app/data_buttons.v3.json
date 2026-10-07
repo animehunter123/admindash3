@@ -1,0 +1,99 @@
+{
+  "Ubuntu Stuff": {
+    "Ubuntu Homepage": {
+      "url": "http://ubuntu.com",
+      "hashtags": "#ubuntu",
+      "comments": "This is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingyThis is some notes about thie thingy",
+      "secrets": ""
+    },
+    "Ubuntu homepage without http: wont work due to browser default sec": {
+      "url": "ubuntu.com",
+      "hashtags": "",
+      "comments": "",
+      "secrets": ""
+    }
+  },
+  "Dioxus Framework": {
+    "Dioxus Docs: Breaking out with web-sys": {
+      "url": "https://dioxuslabs.com/learn/0.7/essentials/advanced/breaking_out/",
+      "hashtags": "#dioxus #docs #rust",
+      "comments": "",
+      "secrets": ""
+    },
+    "Dioxus Drag&Drop Library": {
+      "url": "https://github.com/Blarx/dioxus-dnd-kit",
+      "hashtags": "",
+      "comments": "",
+      "secrets": "aministrator password1234"
+    }
+  },
+  "Rust Programming1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111": {
+    "The Rust Book 🚨": {
+      "url": "https://doc.rust-lang.org/book/",
+      "hashtags": "#docs #rust",
+      "comments": "",
+      "secrets": ""
+    },
+    "Query.rs Search Engine": {
+      "url": "https://query.rs/",
+      "hashtags": "#rust",
+      "comments": "",
+      "secrets": "admin password123"
+    },
+    "docs.rs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+      "url": "http://docs.rs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hashtags": "#rust",
+      "comments": "",
+      "secrets": ""
+    }
+  },
+  "button1": {
+    "url01 of button1": {
+      "url": "http://url01",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": "admin password12345"
+    },
+    "url02": {
+      "url": "http://url02",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    },
+    "DIVIDER1": "",
+    "url03": {
+      "url": "http://url03",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    },
+    "url04": {
+      "url": "http://url04",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    }
+  },
+  "BUtton2": {
+    "url01": {
+      "url": "http://url01",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    },
+    "url02": {
+      "url": "http://url02",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    }
+  },
+  "button3": {
+    "but3row": {
+      "url": "but3rowurl01",
+      "hashtags": "#tests",
+      "comments": "",
+      "secrets": ""
+    }
+  }
+}

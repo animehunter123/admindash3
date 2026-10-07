@@ -1,0 +1,8 @@
+# Disabled this, as NOW we need the compiled binary with our GIT HASH inside of it.
+#**/target
+
+# Other unneeded stuff
+**/dist
+LICENSES
+LICENSE
+temp

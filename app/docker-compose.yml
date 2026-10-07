@@ -1,0 +1,16 @@
+services:
+  admindash3:
+    image: admindash3:latest
+    container_name: admindash3
+    ports:
+      - "80:80"
+    volumes:
+      #- ./data_buttons.json:/usr/local/app/data_buttons.json
+      #- ./data_buttons.v2.json:/usr/local/app/data_buttons.v2.json
+      - ./data_buttons.v3.json:/usr/local/app/data_buttons.v3.json
+      - ./data_navbar.json:/usr/local/app/data_navbar.json
+      - ./dashboard_history:/usr/local/app/dashboard_history
+    restart: unless-stopped
+    environment:
+      adminusername: admin
+      adminpassword: admin    

@@ -1,0 +1,13 @@
+So as a practice...
+
+I want to do this: 
+
+https://github.com/DioxusLabs/dioxus/blob/main/examples/07-fullstack/ssr-only/src/main.rs
+
+
+This is FULL SSR ONLY (NO HYDRATION) but.... 
+
+it generates a HTML for EVERY PAGE REQUEST thus no WASM is sent to client. (its a faster way to get admindash)
+
+
+so learn/study this AND THEN.... deal with hydration.

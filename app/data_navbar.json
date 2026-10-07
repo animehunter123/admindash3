@@ -1,0 +1,17 @@
+[
+    {
+        "name": "Admindash3",
+        "url": "/",
+        "children": []
+    },
+    {
+        "name": "wiki/",
+        "url": "http://wiki/",
+        "children": []
+    },
+    {
+        "name": "cp/",
+        "url": "http://cp/",
+        "children": []
+    }
+]

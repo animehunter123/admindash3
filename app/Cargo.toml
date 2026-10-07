@@ -1,0 +1,38 @@
+[package]
+name = "Admindash3"
+version = "2.5.0"
+authors = ["ahm <ahm>"]
+edition = "2024"
+
+# For our build.rs we will do build-dependencies to get the rustc-version then put that in the footer
+[build-dependencies]
+rustc_version = "0.4.1"
+
+[dependencies]
+anyhow = "1.0.104"
+dioxus = { version = "0.7.10", features = ["router", "fullstack"] }
+dioxus-web = "0.7.10"
+indexmap = { version = "2.12.0", features = ["serde"] }
+js-sys = "0.3.104"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
+serde_path_to_error = "0.1.20"
+wasm-bindgen = "0.2.127"
+wasm-bindgen-futures = "0.4.77"
+web-sys = { version = "0.3.104", features = ["Window"] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+server = ["dioxus/server"]
+
+[profile.release]
+opt-level = "z"       # Optimize for size
+lto = true            # Enable Link Time Optimization
+codegen-units = 1     # Reduce number of codegen units for better optimizations
+panic = "abort"       # Remove panic unwinding overhead
+strip = true          # Strip symbols and debug info
+debug = false         # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/
+incremental = false   # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/#

@@ -1,0 +1,383 @@
+use crate::IFRAME_URL;
+use dioxus::prelude::*;
+use dioxus_web::WebEventExt;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
+
+// -----------------------------------------------------------------------------
+// NAVBAR ITEMS
+// -----------------------------------------------------------------------------
+
+#[derive(Clone, PartialEq)]
+struct NavItem {
+    name: &'static str,
+    url: Option<&'static str>,
+    children: Vec<NavItem>,
+}
+
+fn navbar_items() -> Vec<NavItem> {
+    // TODO: Make this a dynamic navbar from navbars.json or something
+    vec![
+        NavItem {
+            name: "Admindash3",
+            url: Some("/"),
+            children: vec![],
+        },
+        NavItem {
+            name: "CopyPasta",
+            url: Some("http://cp.lm.local"),
+            children: vec![],
+        },
+        // Example dropdown:
+        //
+        // NavItem {
+        //     name: "Products",
+        //     url: None,
+        //     children: vec![
+        //         NavItem {
+        //             name: "Servers",
+        //             url: Some("/servers"),
+        //             children: vec![],
+        //         },
+        //         NavItem {
+        //             name: "Storage",
+        //             url: Some("/storage"),
+        //             children: vec![],
+        //         },
+        //     ],
+        // },
+    ]
+}
+
+// -----------------------------------------------------------------------------
+// NAVBAR
+// -----------------------------------------------------------------------------
+
+#[component]
+pub fn Navbar() -> Element {
+    let items = navbar_items();
+
+    let mut search = use_signal(String::new);
+    let mut search_open = use_signal(|| false);
+
+    // Index of the currently highlighted search result.
+    let mut selected_index = use_signal(|| 0usize);
+
+    let query = search().to_lowercase();
+
+    // Build the filtered search-result list once per render.
+    let matches: Vec<(String, String)> = {
+        let buttons = crate::BUTTONS.read();
+
+        buttons
+            .values()
+            .flat_map(|links| links.iter())
+            .filter(|(name, _url)| {
+                !name.starts_with("DIVIDER")
+                    && !query.is_empty()
+                    && name.to_lowercase().contains(&query)
+            })
+            .map(|(name, url)| (name.clone(), url.clone()))
+            .collect()
+    };
+
+    // The keyboard handler needs its own clone of the current matches.
+    let matches_for_keyboard = matches.clone();
+
+    rsx! {
+                   nav {
+                       class: "bg-gray-900 p-4 flex items-center",
+
+                       // -----------------------------------------------------------------
+                       // LEFT SIDE - NORMAL NAVBAR
+                       // -----------------------------------------------------------------
+
+                       ul {
+                           class: "flex gap-6 items-center",
+
+                           for item in items {
+                               li {
+                                   NavEntry { item }
+                               }
+                           }
+                       }
+
+                       // -----------------------------------------------------------------
+                       // RIGHT SIDE - QUICK SEARCH
+                       // -----------------------------------------------------------------
+
+                       div {
+                           class: "ml-auto relative",
+
+                           input {
+                               id: "autocomplete_field",
+                               autofocus: true,
+
+                               value: "{search}",
+
+
+
+
+
+
+            /*
+            * I added this section for when handling the case the USER TYPES before the wasm binary is
+    * downloaded.. Browser DOM → user types → WASM mounts → onmounted adopts existing text → search + search_open update → normal Dioxus reactivity kicks in.
+    *
+    * so we use the Dioxus 0.7 docs and use the onmounted so that the SSR->WASM handoff race condition is fixed!!!! YES!!!
+    */
+        onmounted: move |event| {
+            let element = event.data().as_web_event();
+
+            if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
+                let existing_value = input.value();
+
+
+           // TEMPORARY TEST
+            web_sys::console::log_1(
+                &format!("ONMOUNTED VALUE = {:?}", existing_value).into()
+            );
+
+
+                if !existing_value.is_empty() {
+                    spawn_local(async move {
+
+
+                  web_sys::console::log_1(
+                        &format!("SETTING SEARCH = {:?}", existing_value).into()
+                    );
+
+
+
+                        search.set(existing_value);
+
+                    search_open.set(true);
+                    selected_index.set(0);
+
+
+                    });
+                }
+            }
+        },
+
+
+
+                /*
+            onmounted: move |event| {
+                   let element = event.data().as_web_event();
+
+                   if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
+                       let existing_value = input.value();
+
+                       if !existing_value.is_empty() {
+                           search.set(existing_value);
+                       }
+                   }
+               },
+        */
+
+
+
+                               placeholder: "Quick Search...",
+
+                               class: "w-64 px-3 py-2 rounded-md bg-gray-800
+                            text-white placeholder-gray-400
+                            border border-gray-700
+                            focus:outline-none focus:ring-2
+                            focus:ring-blue-500",
+
+                               onfocus: move |_| {
+                                   search_open.set(true);
+
+                                   // Always highlight the first result when opening.
+                                   selected_index.set(0);
+                               },
+
+                               oninput: move |event| {
+                                   search.set(event.value());
+                                   search_open.set(true);
+
+                                   // A new query means the first match is selected.
+                                   selected_index.set(0);
+                               },
+
+                               onkeydown: move |event| {
+                                   match event.key() {
+                                       Key::Escape => {
+                                           search_open.set(false);
+                                           search.set(String::new());
+                                           selected_index.set(0);
+                                       }
+
+                                       Key::ArrowDown => {
+                                           if !matches_for_keyboard.is_empty() {
+                                               let next_index = (selected_index() + 1)
+                                                   .min(matches_for_keyboard.len() - 1);
+
+                                               selected_index.set(next_index);
+                                               event.prevent_default();
+                                           }
+                                       }
+
+                                       Key::ArrowUp => {
+                                           if !matches_for_keyboard.is_empty() {
+                                               let previous_index =
+                                                   selected_index().saturating_sub(1);
+
+                                               selected_index.set(previous_index);
+                                               event.prevent_default();
+                                           }
+                                       }
+
+                                       Key::Enter => {
+                                           if let Some((_name, url)) =
+                                               matches_for_keyboard.get(selected_index()).cloned()
+                                           {
+                                               if let Some(win) = window() {
+                                                   let _ = win.open_with_url_and_target(
+                                                       &url,
+                                                       "_blank",
+                                                   );
+                                               }
+
+                                               search.set(String::new());
+                                               search_open.set(false);
+                                               selected_index.set(0);
+                                               event.prevent_default();
+                                           }
+                                       }
+
+                                       _ => {}
+                                   }
+                               },
+                           }
+
+                           // -----------------------------------------------------------------
+                           // SEARCH RESULTS
+                           // -----------------------------------------------------------------
+
+                           if search_open() && !matches.is_empty() {
+                               div {
+                                   class: "absolute right-0 mt-2 w-96
+                                bg-white rounded-md shadow-xl
+                                border border-gray-200
+                                overflow-hidden z-50",
+
+                                   for (index, (name, url)) in matches.iter().enumerate() {
+                                       {
+                                           let name = name.clone();
+                                           let url = url.clone();
+                                           let is_selected = index == selected_index();
+
+                                           rsx! {
+                                               button {
+                                                   class: if is_selected {
+                                                       "block w-full text-left px-4 py-2
+                                                        bg-blue-100 text-blue-700"
+                                                   } else {
+                                                       "block w-full text-left px-4 py-2
+                                             text-gray-800 hover:bg-blue-100
+                                             hover:text-blue-700"
+                                                   },
+
+                                                   onclick: move |_| {
+                                                       if let Some(win) = window() {
+                                                           let _ = win.open_with_url_and_target(
+                                                               &url,
+                                                               "_blank",
+                                                           );
+                                                       }
+
+                                                       search.set(String::new());
+                                                       search_open.set(false);
+                                                       selected_index.set(0);
+                                                   },
+
+                                                   "{name}"
+                                               }
+                                           }
+                                       }
+                                   }
+                               }
+                           }
+                       }
+                   }
+               }
+}
+
+// -----------------------------------------------------------------------------
+// NORMAL NAVBAR ENTRY
+// -----------------------------------------------------------------------------
+
+#[component]
+fn NavEntry(item: NavItem) -> Element {
+    let mut open = use_signal(|| false);
+
+    rsx! {
+        div {
+            class: "relative",
+
+            if item.name == "CopyPasta" {
+                button {
+                    class: "text-white hover:text-blue-400",
+
+                    onclick: move |_| {
+                        //crate::IFRAME_URL.set( Some("http://cp.lm.local".to_string()));
+                        *IFRAME_URL.write() = Some("http://192.168.0.31:3000/".to_string().clone());
+                    },
+
+                    "{item.name}"
+                }
+            } else if item.children.is_empty() {
+                a {
+                    href: item.url.unwrap_or("#"),
+                    class: "text-white hover:text-blue-400",
+
+                    onclick: move |_| {
+                        // Clicking Admindash3 returns to the normal dashboard.
+                        //crate::IFRAME_URL.set(None);
+                        *IFRAME_URL.write() = Some("".to_string().clone());
+                    },
+
+                    "{item.name}"
+                }
+            } else {
+                button {
+                    class: "text-white hover:text-blue-400",
+
+                    onclick: move |_| {
+                        open.set(!open());
+                    },
+
+                    "{item.name}"
+
+                    span {
+                        class: "ml-2",
+                        "▼"
+                    }
+                }
+
+                if open() {
+                    ul {
+                        class: "absolute left-0 mt-2 w-48
+                                bg-white rounded shadow-lg p-2 z-50",
+
+                        for child in item.children.clone() {
+                            li {
+                                class: "p-2 hover:bg-gray-100",
+
+                                a {
+                                    href: child.url.unwrap_or("#"),
+                                    class: "text-gray-800",
+
+                                    "{child.name}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

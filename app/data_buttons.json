@@ -1,0 +1,21 @@
+{
+  "Rust Programming": {
+    "Query.rs Search Engine":"https://query.rs/",
+    "The Rust Book 🚨":"https://doc.rust-lang.org/book/"
+  },
+  "Dioxus Framework": {
+    "Dioxus Docs: Breaking out with web-sys":"https://dioxuslabs.com/learn/0.7/essentials/advanced/breaking_out/",
+    "Dioxus Drag&Drop Library":"https://github.com/Blarx/dioxus-dnd-kit"
+  },
+  "button1": {
+    "url01":"http://url01",
+    "url02":"http://url02",
+    "DIVIDER1": "",
+    "url03":"http://url03",
+    "url04":"http://url04"
+  },
+  "BUtton2": {
+    "url01":"http://url01",
+    "url02":"http://url02"
+  }
+}
