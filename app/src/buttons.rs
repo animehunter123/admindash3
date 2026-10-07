@@ -315,154 +315,189 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
     rsx! {
         div { class: "container mx-auto px-4 mt-6",
             if is_admin {
+                // -----------------------------------------------------------------
+                // ADMIN USAGE
+                // -----------------------------------------------------------------
+                // Each control gets its own small card.  The button and its
+                // explanation stay together, which makes the admin panel much
+                // easier to scan than a row of unexplained buttons.
+                //
+                // The grid changes from five columns on wide screens to fewer
+                // columns on smaller screens, so the same information remains
+                // readable on a phone-sized browser.
                 div {
-                    class: "mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 shadow-sm",
+                    class: "mb-4 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-sm",
 
                     div {
-                        class: "flex flex-wrap items-center justify-between gap-3",
+                        class: "border-b border-blue-100 bg-white/70 px-4 py-4 sm:px-5",
 
                         div {
-                            h2 { class: "font-semibold text-blue-900", "Admin Usage" }
+                            class: "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
+
+                            div {
+                                class: "min-w-0",
+                                h2 {
+                                    class: "text-lg font-semibold tracking-tight text-blue-950",
+                                    "Admin Usage"
+                                }
+                                p {
+                                    class: "mt-1 max-w-3xl text-sm leading-6 text-blue-800",
+                                    "You are in edit mode. Use the five controls below to manage the dashboard. Changes are saved to the dashboard data immediately."
+                                }
+                            }
+
+                            div {
+                                class: "shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800 shadow-sm",
+                                "✎ Edit • ⠿ Drag • + Add"
+                            }
+                        }
+                    }
+
+                    div {
+                        class: "grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5",
+
+                        // ---------------------------------------------------------
+                        // +Button
+                        // ---------------------------------------------------------
+                        div {
+                            class: "flex h-full flex-col rounded-lg border border-blue-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                            button {
+                                class: "w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                title: "Create a new main button and its first URL row.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| {
+                                    mutation_error.set(None);
+                                    button_editor.set(Some(ButtonEditorState {
+                                        mode: ButtonEditorMode::Create,
+                                        draft: ButtonDraft::default(),
+                                    }));
+                                },
+                                "+Button"
+                            }
                             p {
-                                class: "mt-1 text-blue-800",
-                                "You are in edit mode. Changes are saved to the dashboard data immediately."
+                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                "Create a new main dashboard button. It starts with its first URL row."
                             }
                         }
 
+                        // ---------------------------------------------------------
+                        // +Tags
+                        // ---------------------------------------------------------
                         div {
-                            class: "rounded-md bg-blue-100 px-3 py-2 text-xs font-medium text-blue-900",
-                            "✎ Edit • ⠿ Drag • + Add"
-                        }
-                    }
-
-                    // Keep the usage cards aligned with the four main admin buttons.
-                    div {
-                        class: "mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4",
-
-                        div {
-                            class: "rounded-md bg-white/70 p-3",
-                            strong { "+Button" }
-                            p { class: "mt-1 text-xs text-blue-800", "+Button creates a new main button and its first URL row." }
-                        }
-
-                        div {
-                            class: "rounded-md bg-white/70 p-3",
-                            strong { "+Tags" }
-                            p { class: "mt-1 text-xs text-blue-800", "+Tags opens the global tag manager so you can add, remove, and save managed tags." }
-                        }
-
-                        div {
-                            class: "rounded-md bg-white/70 p-3",
-                            strong { "+JSON Check" }
-                            p { class: "mt-1 text-xs text-blue-800", "Checks data_buttons.v3.json using the same parser as the dashboard and reports the line, column, JSON path, source line, and caret when an error is found." }
-                        }
-
-                        div {
-                            class: "rounded-md bg-white/70 p-3",
-                            strong { "+Autosort ON/OFF" }
-                            p { class: "mt-1 text-xs text-blue-800", "Turns alphabetical sorting of the main button cards on or off. This is a system-wide setting and survives F5." }
-                        }
-                    }
-
-                    div {
-                        class: "mt-2 rounded-md bg-white/70 p-3",
-                        strong { "Rows" }
-                        p { class: "mt-1 text-xs text-blue-800", "Open a button to add, edit, delete, or drag URL rows into a new order. Row dragging inside the modal remains unchanged." }
-                    }
-                }
-
-                div { class: "mb-4 flex justify-end gap-2",
-                    button {
-                        class: "rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700",
-                        title: "Create a new main button and its first URL row.",
-                        onclick: move |_| {
-                            mutation_error.set(None);
-                            button_editor.set(Some(ButtonEditorState {
-                                mode: ButtonEditorMode::Create,
-                                draft: ButtonDraft::default(),
-                            }));
-                        },
-                        "+Button"
-                    }
-
-                    button {
-                        class: "rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700",
-                        title: "Open the global tag manager to add, remove, and save managed tags.",
-                        onclick: move |_| {
-                            mutation_error.set(None);
-                            tag_manager_draft.set(available_tags_for_manager.clone());
-                            new_tag.set(String::new());
-                            tag_manager_open.set(true);
-                        },
-                        "+Tags"
-                    }
-
-                    button {
-                        class: "rounded-md bg-slate-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700",
-                        title: "Validate data_buttons.v3.json with the dashboard parser. Errors include the JSON path, line, column, source line, and caret.",
-                        onclick: move |_| async move {
-                            mutation_error.set(None);
-                            status_message.set(None);
-                            mutation_busy.set(true);
-
-                            match check_json_server(ADMIN_AUTH()).await {
-                                Ok(()) => {
-                                    status_message.set(Some(
-                                        "Dashboard JSON is valid.".to_string()
-                                    ));
-                                }
-                                Err(error) => {
-                                    mutation_error.set(Some(error.to_string()));
-                                }
+                            class: "flex h-full flex-col rounded-lg border border-indigo-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                            button {
+                                class: "w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                title: "Open the global tag manager to add, remove, and save managed tags.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| {
+                                    mutation_error.set(None);
+                                    tag_manager_draft.set(available_tags_for_manager.clone());
+                                    new_tag.set(String::new());
+                                    tag_manager_open.set(true);
+                                },
+                                "+Tags"
                             }
-
-                            mutation_busy.set(false);
-                        },
-                        "+JSON Check"
-                    }
-
-                    button {
-                        class: "rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-purple-700",
-                        title: "Open the seven-snapshot dashboard history page. Each dashboard JSON change is backed up before it is written.",
-                        onclick: move |_| {
-                            mutation_error.set(None);
-                            status_message.set(None);
-                            *HISTORY_PAGE.write() = true;
-                        },
-                        "+History"
-                    }
-
-                    // Auto-sort is a system-wide admin control.
-                    button {
-                        class: if autosort_enabled() {
-                            "rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
-                        } else {
-                            "rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-700"
-                        },
-                        title: "Toggle system-wide alphabetical sorting of the main button cards. The setting survives F5 and applies to every visitor.",
-                        onclick: move |_| async move {
-                            let enabled = !autosort_enabled();
-                            autosort_enabled.set(enabled);
-
-                            match set_autosort_server(ADMIN_AUTH(), enabled).await {
-                                Ok(()) => {
-                                    status_message.set(Some(format!(
-                                        "Autosort is now {}.",
-                                        if enabled { "ON" } else { "OFF" }
-                                    )));
-                                    // Reload the dashboard so the server-rendered
-                                    // payload and this local UI state agree.
-                                    *DASHBOARD_REFRESH_KEY.write() += 1;
-                                }
-                                Err(error) => {
-                                    // If the server rejected the change, put the
-                                    // switch back to its previous state.
-                                    autosort_enabled.set(!enabled);
-                                    mutation_error.set(Some(error.to_string()));
-                                }
+                            p {
+                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                "Manage the global tags used by URL rows. Add, remove, and save tags here."
                             }
-                        },
-                        if autosort_enabled() { "+Autosort ON" } else { "+Autosort OFF" }
+                        }
+
+                        // ---------------------------------------------------------
+                        // +JSON Check
+                        // ---------------------------------------------------------
+                        div {
+                            class: "flex h-full flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                            button {
+                                class: "w-full rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                title: "Validate data_buttons.v3.json with the dashboard parser.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| async move {
+                                    mutation_error.set(None);
+                                    status_message.set(None);
+                                    mutation_busy.set(true);
+
+                                    match check_json_server(ADMIN_AUTH()).await {
+                                        Ok(()) => {
+                                            status_message.set(Some(
+                                                "Dashboard JSON is valid.".to_string()
+                                            ));
+                                        }
+                                        Err(error) => {
+                                            mutation_error.set(Some(error.to_string()));
+                                        }
+                                    }
+
+                                    mutation_busy.set(false);
+                                },
+                                "+JSON Check"
+                            }
+                            p {
+                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                "Check the dashboard JSON using the same parser used when the dashboard loads."
+                            }
+                        }
+
+                        // ---------------------------------------------------------
+                        // +History
+                        // ---------------------------------------------------------
+                        div {
+                            class: "flex h-full flex-col rounded-lg border border-purple-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                            button {
+                                class: "w-full rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                title: "Open the dashboard history page.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| {
+                                    mutation_error.set(None);
+                                    status_message.set(None);
+                                    *HISTORY_PAGE.write() = true;
+                                },
+                                "+History"
+                            }
+                            p {
+                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                "View saved JSON snapshots and use the history tools to inspect or restore earlier versions."
+                            }
+                        }
+
+                        // ---------------------------------------------------------
+                        // +Autosort
+                        // ---------------------------------------------------------
+                        div {
+                            class: "flex h-full flex-col rounded-lg border border-emerald-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                            button {
+                                class: if autosort_enabled() {
+                                    "w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                } else {
+                                    "w-full rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                },
+                                title: "Toggle system-wide alphabetical sorting of the main button cards.",
+                                disabled: mutation_busy(),
+                                onclick: move |_| async move {
+                                    let enabled = !autosort_enabled();
+                                    autosort_enabled.set(enabled);
+
+                                    match set_autosort_server(ADMIN_AUTH(), enabled).await {
+                                        Ok(()) => {
+                                            status_message.set(Some(format!(
+                                                "Autosort is now {}.",
+                                                if enabled { "ON" } else { "OFF" }
+                                            )));
+                                            *DASHBOARD_REFRESH_KEY.write() += 1;
+                                        }
+                                        Err(error) => {
+                                            autosort_enabled.set(!enabled);
+                                            mutation_error.set(Some(error.to_string()));
+                                        }
+                                    }
+                                },
+                                if autosort_enabled() { "+Autosort ON" } else { "+Autosort OFF" }
+                            }
+                            p {
+                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                "Turn alphabetical sorting of the main button cards on or off. This is system-wide and survives F5."
+                            }
+                        }
                     }
                 }
             }
@@ -652,6 +687,31 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                 h1 { class: "truncate text-2xl font-bold text-gray-900", "{button.name}" }
 
                                 if is_admin {
+                                    // The selected-button modal already knows
+                                    // exactly which button is open.  Reuse that
+                                    // button data to launch the same
+                                    // ButtonEditorModal used by the pencil on
+                                    // the main dashboard card.
+                                    button {
+                                        class: "rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100",
+                                        onclick: {
+                                            let button = button.clone();
+                                            move |_| {
+                                                mutation_error.set(None);
+                                                button_editor.set(Some(ButtonEditorState {
+                                                    mode: ButtonEditorMode::Edit {
+                                                        original_name: button.name.clone(),
+                                                    },
+                                                    draft: ButtonDraft {
+                                                        name: button.name.clone(),
+                                                        ..ButtonDraft::default()
+                                                    },
+                                                }));
+                                            }
+                                        },
+                                        "Edit Button"
+                                    }
+
                                     button {
                                         class: "rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 transition hover:bg-gray-100",
                                         onclick: {
@@ -1109,8 +1169,48 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(()) => {
+                            // After renaming a button, open its URL-list modal
+                            // using the new name. The refresh below supplies the
+                            // updated button and all of its rows.
+                            let saved_button_name = editor.draft.name.clone();
+
                             button_editor.set(None);
                             mutation_error.set(None);
+                            selected_button_name.set(Some(saved_button_name));
+                            *DASHBOARD_REFRESH_KEY.write() += 1;
+                        }
+                        Err(error) => {
+                            mutation_error.set(Some(error.to_string()));
+                        }
+                    }
+                },
+                on_clone: move |_| async move {
+                    let Some(editor) = button_editor() else {
+                        return;
+                    };
+
+                    let ButtonEditorMode::Edit { original_name } = editor.mode else {
+                        return;
+                    };
+
+                    mutation_busy.set(true);
+                    mutation_error.set(None);
+
+                    let result = clone_button_server(ADMIN_AUTH(), original_name).await;
+
+                    mutation_busy.set(false);
+
+                    match result {
+                        Ok(cloned_name) => {
+                            // The cloned button is inserted immediately after the
+                            // source. Select that new name so the URL-list modal
+                            // opens on the clone after the dashboard refresh.
+                            button_editor.set(None);
+                            mutation_error.set(None);
+                            status_message.set(Some(format!(
+                                "Cloned button as '{cloned_name}'."
+                            )));
+                            selected_button_name.set(Some(cloned_name));
                             *DASHBOARD_REFRESH_KEY.write() += 1;
                         }
                         Err(error) => {
@@ -1229,8 +1329,56 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(()) => {
+                            // Keep the button selected after saving a row from the
+                            // search pencil.  The dashboard refresh below will load
+                            // the new JSON, so the URL-list modal can show the
+                            // freshly saved row name immediately after the refresh.
+                            let edited_button_name = editor.button_name.clone();
+
                             row_editor.set(None);
                             mutation_error.set(None);
+                            selected_button_name.set(Some(edited_button_name));
+                            *DASHBOARD_REFRESH_KEY.write() += 1;
+                        }
+                        Err(error) => {
+                            mutation_error.set(Some(error.to_string()));
+                        }
+                    }
+                },
+                on_clone: move |_| async move {
+                    let Some(editor) = row_editor() else {
+                        return;
+                    };
+
+                    let Some(original_name) = editor.original_name.clone() else {
+                        return;
+                    };
+
+                    mutation_busy.set(true);
+                    mutation_error.set(None);
+
+                    let result = clone_row_server(
+                        ADMIN_AUTH(),
+                        editor.button_name.clone(),
+                        original_name,
+                    )
+                    .await;
+
+                    mutation_busy.set(false);
+
+                    match result {
+                        Ok(cloned_name) => {
+                            // Return to the button's URL-list modal after cloning.
+                            // The refresh loads the newly inserted -1/-2/... row,
+                            // making the result immediately visible to the admin.
+                            let cloned_button_name = editor.button_name.clone();
+
+                            row_editor.set(None);
+                            mutation_error.set(None);
+                            status_message.set(Some(format!(
+                                "Cloned row as '{cloned_name}'."
+                            )));
+                            selected_button_name.set(Some(cloned_button_name));
                             *DASHBOARD_REFRESH_KEY.write() += 1;
                         }
                         Err(error) => {
@@ -1547,6 +1695,7 @@ fn ButtonEditorModal(
     available_tags: Vec<String>,
     on_first_row_secrets_input: EventHandler<String>,
     on_save: EventHandler<()>,
+    on_clone: EventHandler<()>,
     on_delete: EventHandler<()>,
 ) -> Element {
     let is_create = matches!(editor.mode, ButtonEditorMode::Create);
@@ -1654,8 +1803,16 @@ fn ButtonEditorModal(
                 }
 
                 div { class: "mt-6 flex flex-wrap items-center justify-between gap-3",
-                    div {
+                    div { class: "flex flex-wrap gap-2",
                         if !is_create {
+                            button {
+                                class: "rounded-md border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60",
+                                disabled: busy,
+                                title: "Clone this button immediately after the original with a unique -1, -2, -3... name.",
+                                onclick: move |_| on_clone.call(()),
+                                "Clone Button"
+                            }
+
                             button {
                                 class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
                                 disabled: busy,
@@ -1701,6 +1858,7 @@ fn RowEditorModal(
     on_comments_input: EventHandler<String>,
     on_secrets_input: EventHandler<String>,
     on_save: EventHandler<()>,
+    on_clone: EventHandler<()>,
     on_delete: EventHandler<()>,
 ) -> Element {
     let is_create = editor.original_name.is_none();
@@ -1936,11 +2094,18 @@ fn RowEditorModal(
                 }
 
                 div { class: "mt-6 flex flex-wrap items-center justify-between gap-3",
-                    div {
+                    div { class: "flex flex-wrap gap-2",
                         if !is_create {
                             button {
-                                class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
+                                class: "rounded-md border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60",
                                 disabled: busy,
+                                title: "Clone this row immediately after the original with a unique -1, -2, -3... name.",
+                                onclick: move |_| on_clone.call(()),
+                                "Clone Row"
+                            }
+
+                            button {
+                                class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
                                 onclick: move |_| on_delete.call(()),
                                 "Delete Row"
                             }
@@ -2011,6 +2176,23 @@ async fn rename_button_server(
 }
 
 #[server]
+async fn clone_button_server(
+    credentials: AdminCredentials,
+    button_name: String,
+) -> Result<String, ServerFnError> {
+    crate::dashboard_data::clone_button(
+        std::path::Path::new(crate::dashboard_data::BUTTONS_V3_FILE),
+        &credentials,
+        &button_name,
+    )
+    .map_err(|error| ServerFnError::ServerError {
+        message: error.to_string(),
+        code: 500,
+        details: None,
+    })
+}
+
+#[server]
 async fn delete_button_server(
     credentials: AdminCredentials,
     button_name: String,
@@ -2038,6 +2220,25 @@ async fn save_row_server(
         &credentials,
         &button_name,
         input,
+    )
+    .map_err(|error| ServerFnError::ServerError {
+        message: error.to_string(),
+        code: 500,
+        details: None,
+    })
+}
+
+#[server]
+async fn clone_row_server(
+    credentials: AdminCredentials,
+    button_name: String,
+    row_name: String,
+) -> Result<String, ServerFnError> {
+    crate::dashboard_data::clone_row(
+        std::path::Path::new(crate::dashboard_data::BUTTONS_V3_FILE),
+        &credentials,
+        &button_name,
+        &row_name,
     )
     .map_err(|error| ServerFnError::ServerError {
         message: error.to_string(),
@@ -2152,4 +2353,3 @@ async fn set_autosort_server(
         }
     })
 }
-

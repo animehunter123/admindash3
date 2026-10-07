@@ -284,7 +284,13 @@ fn App() -> Element {
         // WHOLE PAGE
         // ---------------------------------------------------------------------
         div {
-            class: "min-h-screen flex flex-col",
+            // Give the page a fixed viewport-sized flex column.
+            //
+            // `min-h-screen` only guarantees a minimum height, so the outer
+            // page can still grow when the dashboard contains many buttons.
+            // With `h-screen overflow-hidden`, the main area is the part that
+            // grows and scrolls, while the footer remains in the viewport.
+            class: "h-screen flex flex-col overflow-hidden",
 
 
             // -----------------------------------------------------------------
@@ -303,7 +309,12 @@ fn App() -> Element {
             // MAIN CONTENT
             // -----------------------------------------------------------------
             main {
-                class: "flex-1",
+                // Keep the footer visible at the bottom of the viewport even
+                // when the admin dashboard becomes taller after login.
+                //
+                // The dashboard itself becomes the scrollable region rather
+                // than pushing the footer below the viewport.
+                class: "min-h-0 flex-1 overflow-y-auto",
 
 
                 // -------------------------------------------------------------
