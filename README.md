@@ -75,14 +75,13 @@ The jist of it is basically...
 
 @@@IMPORTANT@@@
 - if you F5 AFTER LOGGING IN AS ADMIN, there is a flicker. Need to figure out what use_server_future or thingy is causing this.
-- add a new! icon that will popup if a history diff was made within 24 hours ago. So that if a button is renamed that button will have a icon for this (not sure if this is useful).
 - BUGFOUND >> The upstream WASM has changed, and v2.4.3 was compiled on rust version old, so in order to compile --- WE MUST USE " rustup override set 1.98.1", I need to update and test the new cargo.toml ASAP to make sure this still IS NOT a problem. (wasm-bindgen does not compile on 1.99.1 at the moment!!!!!!!!!!!!!"
 - MAKE THE COMMENTS FIELD a WYSIG to support images for url rows that is allows a long string of text + images attachments (or a separate attachments)
+- featreq: add a very subtle highlight saying newly updated on the button as well as the button row on first login, and also on every save of a button or a buttonrow. The highlight should only last 15 seconds, look professional and go away, then only re-appear after logout/login 
 
-- UI Change > Move the +Button +Tags +JSON Check +History +Autosort off to overwrite the AdminUsage top right card of "Edit Drag +Add" so that its clean, also make it responsive in case the browser is resized vertically to be phone size.
-- bug found: footer is not visible after logging in (it gets pushed off screen, and you have to scroll to see it).
-- featreq: For the Edit Button and the Edit Row modals, we want a Clone Button/Clone Row which will clone it in-place in the json safely and correctly appending a -1 or updated number to the end that  is unique.
+- upstream bug --- rust 1.99 and llvm23 --strip-all removes the wasm binden unstable custom section that wasm-bindgen used... so im forced to use rust1.98 until this is fixed with: rustup override set 1.98.1  then compile it... Check this again next month?
 
+- The "Edit Row" and "Edit Button" are missing the red X to close it at the top right. We need to check and also make sure the other modals are all ok too?
 
 v3, v4, v5:
 - refactor code so that there is a "./src/adminbuttons" module, and future cp/rm modules

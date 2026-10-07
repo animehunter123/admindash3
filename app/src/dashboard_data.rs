@@ -1,8 +1,16 @@
 use anyhow::{Context, Result, anyhow, bail};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::{Cursor, Write};
 use std::path::Path;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(not(target_arch = "wasm32"))]
+use zip::write::SimpleFileOptions;
+#[cfg(not(target_arch = "wasm32"))]
+use zip::{CompressionMethod, ZipWriter};
 
 // -----------------------------------------------------------------------------
 // FILES
@@ -14,6 +22,158 @@ pub const TAGS_FILE: &str = "./data_tags.json";
 pub const SYSTEM_PREFERENCES_FILE: &str = "./system_preferences.json";
 pub const HISTORY_DIR: &str = "./dashboard_history";
 pub const MAX_HISTORY_SNAPSHOTS: usize = 100;
+
+// -----------------------------------------------------------------------------
+// ADMIN EXPORT
+// -----------------------------------------------------------------------------
+//
+// The export is deliberately created on the server.  The browser never gets
+// direct filesystem access and does not have to walk the history directory.
+// The only browser-side work is receiving the finished ZIP and asking the
+// browser to download it.
+// -----------------------------------------------------------------------------
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, String)> {
+    ensure_admin(credentials)?;
+
+    let mut archive = ZipWriter::new(Cursor::new(Vec::<u8>::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    // -------------------------------------------------------------------------
+    // Top-level JSON files
+    // -------------------------------------------------------------------------
+    //
+    // These are copied into the root of the ZIP using only their filenames.
+    // -------------------------------------------------------------------------
+    for entry in std::fs::read_dir(".").context("Could not read the dashboard data directory")? {
+        let entry = entry.context("Could not inspect a dashboard data file")?;
+        let path = entry.path();
+
+        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+            continue;
+        }
+
+        let is_json = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+
+        if !is_json {
+            continue;
+        }
+
+        let archive_name = entry.file_name().to_string_lossy().replace('\\', "/");
+        add_file_to_zip(&mut archive, &path, &options, &archive_name)?;
+    }
+
+    // -------------------------------------------------------------------------
+    // dashboard_history
+    // -------------------------------------------------------------------------
+    //
+    // Walk this directory separately. Every file keeps its path underneath
+    // dashboard_history/, so a snapshot such as:
+    //
+    //     ./dashboard_history/dashboard-2026-10-07....json
+    //
+    // becomes:
+    //
+    //     dashboard_history/dashboard-2026-10-07....json
+    //
+    // We deliberately include ALL files in this directory, not only JSON, so
+    // the export remains a faithful backup if another history file type is
+    // added later.
+    // -------------------------------------------------------------------------
+    let history_path = Path::new(HISTORY_DIR);
+
+    if history_path.is_dir() {
+        add_history_directory_to_zip(
+            &mut archive,
+            history_path,
+            Path::new("dashboard_history"),
+            &options,
+        )?;
+    }
+
+    let bytes = archive
+        .finish()
+        .context("Could not finish dashboard export ZIP")?
+        .into_inner();
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let filename = format!("admindash3-export-{timestamp}.zip");
+
+    Ok((bytes, filename))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn add_history_directory_to_zip(
+    archive: &mut ZipWriter<Cursor<Vec<u8>>>,
+    filesystem_directory: &Path,
+    archive_directory: &Path,
+    options: &SimpleFileOptions,
+) -> Result<()> {
+    for entry in std::fs::read_dir(filesystem_directory)
+        .with_context(|| format!("Could not read {}", filesystem_directory.display()))?
+    {
+        let entry = entry.context("Could not inspect a history entry")?;
+        let path = entry.path();
+        let archive_path = archive_directory.join(entry.file_name());
+
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            // Store the directory entry too. This makes the archive structure
+            // obvious even when a history directory is empty.
+            let directory_name = format!(
+                "{}/",
+                archive_path.to_string_lossy().replace('\\', "/")
+            );
+            archive
+                .add_directory(&directory_name, *options)
+                .with_context(|| format!("Could not add {} to the export", directory_name))?;
+
+            add_history_directory_to_zip(
+                archive,
+                &path,
+                &archive_path,
+                options,
+            )?;
+            continue;
+        }
+
+        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+            continue;
+        }
+
+        let archive_name = archive_path.to_string_lossy().replace('\\', "/");
+        add_file_to_zip(archive, &path, options, &archive_name)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn add_file_to_zip(
+    archive: &mut ZipWriter<Cursor<Vec<u8>>>,
+    path: &Path,
+    options: &SimpleFileOptions,
+    archive_name: &str,
+) -> Result<()> {
+    let contents = std::fs::read(path)
+        .with_context(|| format!("Could not read {} for export", path.display()))?;
+
+    archive
+        .start_file(archive_name, *options)
+        .with_context(|| format!("Could not add {} to the export", archive_name))?;
+    archive
+        .write_all(&contents)
+        .with_context(|| format!("Could not write {} to the export", archive_name))?;
+
+    Ok(())
+}
 
 // -----------------------------------------------------------------------------
 // ADMIN CREDENTIALS
@@ -1790,3 +1950,4 @@ impl ButtonRow {
         }
     }
 }
+
