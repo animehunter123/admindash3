@@ -34,6 +34,6 @@ opt-level = "z"       # Optimize for size
 lto = true            # Enable Link Time Optimization
 codegen-units = 1     # Reduce number of codegen units for better optimizations
 panic = "abort"       # Remove panic unwinding overhead
-#strip = true          # Strip symbols and debug info
+#strip = true          # Strip symbols and debug info (THIS WAS REMOVED because wasm-bindgen wont compile anymore on rust >1.99)
 debug = false         # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/
 incremental = false   # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/#
