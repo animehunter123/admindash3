@@ -1,6 +1,6 @@
 [package]
 name = "Admindash3"
-version = "2.6.3"
+version = "2.6.5"
 authors = ["ahm <ahm>"]
 edition = "2024"
 
@@ -34,6 +34,6 @@ opt-level = "z"       # Optimize for size
 lto = true            # Enable Link Time Optimization
 codegen-units = 1     # Reduce number of codegen units for better optimizations
 panic = "abort"       # Remove panic unwinding overhead
-strip = true          # Strip symbols and debug info
+#strip = true          # Strip symbols and debug info
 debug = false         # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/
 incremental = false   # from: https://dioxuslabs.com/learn/0.7/guides/tips/optimizing/#

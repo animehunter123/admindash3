@@ -82,6 +82,9 @@ The jist of it is basically...
 - upstream bug --- rust 1.99 and llvm23 --strip-all removes the wasm binden unstable custom section that wasm-bindgen used... so im forced to use rust1.98 until this is fixed with: rustup override set 1.98.1  then compile it... Check this again next month?
 
 - The "Edit Row" and "Edit Button" are missing the red X to close it at the top right. We need to check and also make sure the other modals are all ok too?
+- the "Edit Row" needs a scrollbar when zoomed in too far, other modals might also - need to check all of them.
+
+- when typing in the searchbox, we want the list to be sorted by button name first, then hashtags, then by urlname 
 
 v3, v4, v5:
 - refactor code so that there is a "./src/adminbuttons" module, and future cp/rm modules

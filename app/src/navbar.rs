@@ -1,8 +1,6 @@
 use crate::dashboard_data::{ADMIN_PASSWORD, ADMIN_USERNAME, ButtonRowView, DashboardPayload};
 use crate::data_navbar::NavItem;
-use crate::{
-    ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, IFRAME_URL,
-};
+use crate::{ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, IFRAME_URL};
 
 use dioxus::prelude::*;
 use dioxus_web::WebEventExt;
@@ -569,8 +567,19 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
     // -------------------------------------------------------------------------
     // SEARCH RESULTS
     // -------------------------------------------------------------------------
+    //
+    // Matching order (any of these makes the row a hit):
+    //   1. button name
+    //   2. hashtags
+    //   3. URL / row name
+    //
+    // After collecting hits we sort the list by:
+    //   1. button name  (primary)
+    //   2. hashtags     (secondary – joined tag string)
+    //   3. URL name     (tertiary)
+    // -------------------------------------------------------------------------
 
-    let matches: Vec<SearchResult> = if normalized_query.is_empty() {
+    let mut matches: Vec<SearchResult> = if normalized_query.is_empty() {
         Vec::new()
     } else if let Some(dashboard) = dashboard.as_ref() {
         dashboard
@@ -597,23 +606,14 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                             comments,
                             ..
                         } => {
-                            // Search URL/name.
+                            // 1. Button name match
+                            let button_matches =
+                                button.name.to_lowercase().contains(&normalized_query);
+
+                            // 2. URL / row name match
                             let name_matches = name.to_lowercase().contains(&normalized_query);
 
-                            // -------------------------------------------------
-                            // Search tags.
-                            //
-                            // We remove '#' before comparing.
-                            //
-                            // So:
-                            //
-                            //     #rust
-                            //
-                            // becomes:
-                            //
-                            //     rust
-                            // -------------------------------------------------
-
+                            // 3. Hashtag match (strip leading '#' before comparing)
                             let matched_tags: Vec<String> = hashtag_tokens
                                 .iter()
                                 .filter(|tag| {
@@ -624,13 +624,9 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                 .cloned()
                                 .collect();
 
-                            // -------------------------------------------------
-                            // No name match AND no tag match?
-                            //
-                            // Then don't return this result.
-                            // -------------------------------------------------
-
-                            if !name_matches && matched_tags.is_empty() {
+                            // Keep the row only when at least one of the three
+                            // criteria matches.
+                            if !button_matches && !name_matches && matched_tags.is_empty() {
                                 return None;
                             }
 
@@ -663,6 +659,19 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
     } else {
         Vec::new()
     };
+
+    // Sort: button name → hashtags → URL / row name
+    matches.sort_by(|a, b| {
+        a.button_name
+            .to_lowercase()
+            .cmp(&b.button_name.to_lowercase())
+            .then_with(|| {
+                let a_tags = a.all_tags.join(" ").to_lowercase();
+                let b_tags = b.all_tags.join(" ").to_lowercase();
+                a_tags.cmp(&b_tags)
+            })
+            .then_with(|| a.row_name.to_lowercase().cmp(&b.row_name.to_lowercase()))
+    });
 
     // -------------------------------------------------------------------------
     // KEEP SELECTED INDEX VALID
