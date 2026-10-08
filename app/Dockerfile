@@ -14,10 +14,14 @@ FROM ubuntu
 RUN apt-get update && apt-get install -y \
     curl \
     git \
-    build-essential \
-    pkg-config \
-    libssl-dev \
+    vim \
+    less \
     && rm -rf /var/lib/apt/lists/*
+
+# Removed these
+#    build-essential \
+#    pkg-config \
+#    libssl-dev \
 
 # NOT NEEDED: 2. Install Rust & Cargo using rustup (safer and newer than apt-get cargo)
 #RUN curl --proto '=https' --tlsv1.2 -sSf https://rustup.rs | sh -s -- -y

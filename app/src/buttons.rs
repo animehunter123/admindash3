@@ -552,10 +552,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                 for (index, button) in buttons_to_display.iter().enumerate() {
                     {
                         let button_name = button.name.clone();
-                        // Each `move` closure owns its captured values.
-                        // Keep separate clones for drag-start and drop so the
-                        // original `button_name` remains available for the
-                        // link below.
                         let drag_button_name = button_name.clone();
                         let drop_button_name = button_name.clone();
                         let button_for_editor = button.clone();
@@ -588,36 +584,33 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                     }
                                 },
                                 ondrop: move |event| {
-                                        if !is_admin || autosort_enabled() {
-                                            return;
-                                        }
+                                    if !is_admin || autosort_enabled() {
+                                        return;
+                                    }
 
-                                        event.prevent_default();
+                                    event.prevent_default();
 
-                                        let Some(from_index) = dragging_button_index() else {
-                                            return;
-                                        };
+                                    let Some(from_index) = dragging_button_index() else {
+                                        return;
+                                    };
 
-                                        dragging_button_index.set(None);
+                                    dragging_button_index.set(None);
 
-                                        let source_name = dragging_button_name()
-                                            .unwrap_or_else(|| "this button".to_string());
-                                        dragging_button_name.set(None);
+                                    let source_name = dragging_button_name()
+                                        .unwrap_or_else(|| "this button".to_string());
+                                    dragging_button_name.set(None);
 
-                                        if from_index == index || mutation_busy() {
-                                            return;
-                                        }
+                                    if from_index == index || mutation_busy() {
+                                        return;
+                                    }
 
-                                        // Save the requested move and show the custom
-                                        // Dioxus confirmation modal. The server is not
-                                        // called until the administrator clicks Move.
-                                        reorder_confirmation.set(Some(ReorderConfirmation::Button {
-                                            from_index,
-                                            to_index: index,
-                                            source_name,
-                                            target_name: drop_button_name.clone(),
-                                        }));
-                            },
+                                    reorder_confirmation.set(Some(ReorderConfirmation::Button {
+                                        from_index,
+                                        to_index: index,
+                                        source_name,
+                                        target_name: drop_button_name.clone(),
+                                    }));
+                                },
 
                                 if is_admin {
                                     button {
@@ -698,22 +691,19 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                             },
 
                             button {
-                                class: "absolute right-3 top-2 text-2xl text-red-500 transition hover:text-red-700",
+                                class: "absolute right-3 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-2xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                                title: "Close",
+                                aria_label: "Close",
                                 onclick: move |_| {
                                     selected_button_name.set(None);
                                 },
                                 "✕"
                             }
 
-                            div { class: "mb-4 flex items-center gap-3 pr-8",
+                            div { class: "mb-4 flex items-center gap-3 pr-12",
                                 h1 { class: "truncate text-2xl font-bold text-gray-900", "{button.name}" }
 
                                 if is_admin {
-                                    // The selected-button modal already knows
-                                    // exactly which button is open.  Reuse that
-                                    // button data to launch the same
-                                    // ButtonEditorModal used by the pencil on
-                                    // the main dashboard card.
                                     button {
                                         class: "rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100",
                                         onclick: {
@@ -767,95 +757,90 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                                         match row {
                                             ButtonRowView::Divider { .. } => {
-                                                // These small owned strings let the drag/drop
-                                                // closures move their data without consuming the
-                                                // `row_for_editor` value also used by the pencil.
                                                 let row_editor_button_name = button_name.clone();
                                                 let drag_row_name = row_for_editor.name().to_string();
                                                 let target_row_name = drag_row_name.clone();
 
                                                 rsx! {
-                                                div {
-                                                    class: if is_admin {
-                                                        if dragging_index() == Some(index) {
-                                                            "group relative rounded-md border-2 border-blue-400 bg-blue-50 px-4 py-3 shadow-md opacity-70 cursor-grabbing transition"
-                                                        } else {
-                                                            "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 px-4 py-3 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
-                                                        }
-                                                    } else {
-                                                        "group relative rounded-md border border-gray-200 px-4 py-3 transition"
-                                                    },
-                                                    draggable: is_admin,
-                                                    ondragstart: move |_| {
-                                                        dragging_index.set(Some(index));
-                                                        dragging_row_name.set(Some(drag_row_name.clone()));
-                                                    },
-                                                    ondragend: move |_| {
-                                                        dragging_index.set(None);
-                                                        dragging_row_name.set(None);
-                                                    },
-                                                    ondragover: move |event| {
-                                                        event.prevent_default();
-                                                    },
-                                                    ondrop: {
-                                                        let button_name = button_name.clone();
-                                                        move |event| {
-                                                            event.prevent_default();
-                                                            let Some(from_index) = dragging_index() else { return; };
-                                                            dragging_index.set(None);
-
-                                                            let source_name = dragging_row_name()
-                                                                .unwrap_or_else(|| "this row".to_string());
-                                                            dragging_row_name.set(None);
-
-                                                            if from_index == index || mutation_busy() { return; }
-
-                                                            // Save the requested row move and let the shared
-                                                            // custom confirmation modal handle it.
-                                                            reorder_confirmation.set(Some(ReorderConfirmation::Row {
-                                                                button_name: button_name.clone(),
-                                                                from_index,
-                                                                to_index: index,
-                                                                source_name,
-                                                                target_name: target_row_name.clone(),
-                                                            }));
-                                                        }
-                                                    },
                                                     div {
-                                                        class: "my-1 flex items-center gap-3 pr-12",
-                                                        span {
-                                                            class: "h-1 flex-1 rounded-full bg-gray-300",
-                                                        }
-                                                        span {
-                                                            class: "text-xs font-semibold uppercase tracking-wider text-gray-500",
-                                                            "{row_for_editor.name()}"
-                                                        }
-                                                        span {
-                                                            class: "h-1 flex-1 rounded-full bg-gray-300",
-                                                        }
-                                                    }
+                                                        class: if is_admin {
+                                                            if dragging_index() == Some(index) {
+                                                                "group relative rounded-md border-2 border-blue-400 bg-blue-50 px-4 py-3 shadow-md opacity-70 cursor-grabbing transition"
+                                                            } else {
+                                                                "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 px-4 py-3 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
+                                                            }
+                                                        } else {
+                                                            "group relative rounded-md border border-gray-200 px-4 py-3 transition"
+                                                        },
+                                                        draggable: is_admin,
+                                                        ondragstart: move |_| {
+                                                            dragging_index.set(Some(index));
+                                                            dragging_row_name.set(Some(drag_row_name.clone()));
+                                                        },
+                                                        ondragend: move |_| {
+                                                            dragging_index.set(None);
+                                                            dragging_row_name.set(None);
+                                                        },
+                                                        ondragover: move |event| {
+                                                            event.prevent_default();
+                                                        },
+                                                        ondrop: {
+                                                            let button_name = button_name.clone();
+                                                            move |event| {
+                                                                event.prevent_default();
+                                                                let Some(from_index) = dragging_index() else { return; };
+                                                                dragging_index.set(None);
 
-                                                    if is_admin {
-                                                        div {
-                                                            class: "absolute bottom-2 right-3 rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
-                                                            title: "Drag divider to reorder",
-                                                            "⠿"
-                                                        }
+                                                                let source_name = dragging_row_name()
+                                                                    .unwrap_or_else(|| "this row".to_string());
+                                                                dragging_row_name.set(None);
 
-                                                        button {
-                                                            class: "absolute right-3 top-2 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                            onclick: move |_| {
-                                                                mutation_error.set(None);
-                                                                row_editor.set(Some(RowEditorState {
-                                                                    button_name: row_editor_button_name.clone(),
-                                                                    original_name: Some(row_for_editor.name().to_string()),
-                                                                    draft: RowDraft::from_row(&row_for_editor),
+                                                                if from_index == index || mutation_busy() { return; }
+
+                                                                reorder_confirmation.set(Some(ReorderConfirmation::Row {
+                                                                    button_name: button_name.clone(),
+                                                                    from_index,
+                                                                    to_index: index,
+                                                                    source_name,
+                                                                    target_name: target_row_name.clone(),
                                                                 }));
-                                                            },
-                                                            "✎"
+                                                            }
+                                                        },
+                                                        div {
+                                                            class: "my-1 flex items-center gap-3 pr-12",
+                                                            span {
+                                                                class: "h-1 flex-1 rounded-full bg-gray-300",
+                                                            }
+                                                            span {
+                                                                class: "text-xs font-semibold uppercase tracking-wider text-gray-500",
+                                                                "{row_for_editor.name()}"
+                                                            }
+                                                            span {
+                                                                class: "h-1 flex-1 rounded-full bg-gray-300",
+                                                            }
+                                                        }
+
+                                                        if is_admin {
+                                                            div {
+                                                                class: "absolute bottom-2 right-3 rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
+                                                                title: "Drag divider to reorder",
+                                                                "⠿"
+                                                            }
+
+                                                            button {
+                                                                class: "absolute right-3 top-2 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                onclick: move |_| {
+                                                                    mutation_error.set(None);
+                                                                    row_editor.set(Some(RowEditorState {
+                                                                        button_name: row_editor_button_name.clone(),
+                                                                        original_name: Some(row_for_editor.name().to_string()),
+                                                                        draft: RowDraft::from_row(&row_for_editor),
+                                                                    }));
+                                                                },
+                                                                "✎"
+                                                            }
                                                         }
                                                     }
-                                                }
                                                 }
                                             },
                                             ButtonRowView::Link {
@@ -867,119 +852,114 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                                 secret_text,
                                                 has_secret,
                                             } => {
-                                                // These small owned strings let the drag/drop
-                                                // closures move their data without consuming the
-                                                // `row_for_editor` value also used by the pencil.
                                                 let row_editor_button_name = button_name.clone();
                                                 let drag_row_name = row_for_editor.name().to_string();
                                                 let target_row_name = drag_row_name.clone();
 
                                                 rsx! {
-                                                div {
-                                                    class: if is_admin {
-                                                        if dragging_index() == Some(index) {
-                                                            "group relative rounded-md border-2 border-blue-400 bg-blue-50 p-4 shadow-md opacity-70 cursor-grabbing transition"
+                                                    div {
+                                                        class: if is_admin {
+                                                            if dragging_index() == Some(index) {
+                                                                "group relative rounded-md border-2 border-blue-400 bg-blue-50 p-4 shadow-md opacity-70 cursor-grabbing transition"
+                                                            } else {
+                                                                "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 p-4 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
+                                                            }
                                                         } else {
-                                                            "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 p-4 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
-                                                        }
-                                                    } else {
-                                                        "group relative rounded-md border border-gray-200 p-4 transition hover:border-gray-300 hover:bg-gray-50"
-                                                    },
-                                                    draggable: is_admin,
-                                                    ondragstart: move |_| {
-                                                        dragging_index.set(Some(index));
-                                                        dragging_row_name.set(Some(drag_row_name.clone()));
-                                                    },
-                                                    ondragend: move |_| {
-                                                        dragging_index.set(None);
-                                                        dragging_row_name.set(None);
-                                                    },
-                                                    ondragover: move |event| {
-                                                        event.prevent_default();
-                                                    },
-                                                    ondrop: {
-                                                        let button_name = button_name.clone();
-                                                        move |event| {
-                                                            event.prevent_default();
-                                                            let Some(from_index) = dragging_index() else { return; };
+                                                            "group relative rounded-md border border-gray-200 p-4 transition hover:border-gray-300 hover:bg-gray-50"
+                                                        },
+                                                        draggable: is_admin,
+                                                        ondragstart: move |_| {
+                                                            dragging_index.set(Some(index));
+                                                            dragging_row_name.set(Some(drag_row_name.clone()));
+                                                        },
+                                                        ondragend: move |_| {
                                                             dragging_index.set(None);
-
-                                                            let source_name = dragging_row_name()
-                                                                .unwrap_or_else(|| "this row".to_string());
                                                             dragging_row_name.set(None);
+                                                        },
+                                                        ondragover: move |event| {
+                                                            event.prevent_default();
+                                                        },
+                                                        ondrop: {
+                                                            let button_name = button_name.clone();
+                                                            move |event| {
+                                                                event.prevent_default();
+                                                                let Some(from_index) = dragging_index() else { return; };
+                                                                dragging_index.set(None);
 
-                                                            if from_index == index || mutation_busy() { return; }
+                                                                let source_name = dragging_row_name()
+                                                                    .unwrap_or_else(|| "this row".to_string());
+                                                                dragging_row_name.set(None);
 
-                                                            // Save the requested row move and let the shared
-                                                            // custom confirmation modal handle it.
-                                                            reorder_confirmation.set(Some(ReorderConfirmation::Row {
-                                                                button_name: button_name.clone(),
-                                                                from_index,
-                                                                to_index: index,
-                                                                source_name,
-                                                                target_name: target_row_name.clone(),
-                                                            }));
-                                                        }
-                                                    },
+                                                                if from_index == index || mutation_busy() { return; }
 
-                                                    if is_admin {
-                                                        div {
-                                                            class: "absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-800",
-                                                            span { class: "text-base leading-none", "⠿" }
-                                                        }
-
-                                                        button {
-                                                            class: "absolute right-3 top-3 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                            onclick: move |_| {
-                                                                mutation_error.set(None);
-                                                                row_editor.set(Some(RowEditorState {
-                                                                    button_name: row_editor_button_name.clone(),
-                                                                    original_name: Some(row_for_editor.name().to_string()),
-                                                                    draft: RowDraft::from_row(&row_for_editor),
+                                                                reorder_confirmation.set(Some(ReorderConfirmation::Row {
+                                                                    button_name: button_name.clone(),
+                                                                    from_index,
+                                                                    to_index: index,
+                                                                    source_name,
+                                                                    target_name: target_row_name.clone(),
                                                                 }));
-                                                            },
-                                                            "✎"
-                                                        }
-                                                    }
+                                                            }
+                                                        },
 
-                                                    a {
-                                                        class: "block rounded-md pr-10 hover:text-blue-700",
-                                                        href: url.clone(),
-                                                        target: "_blank",
+                                                        if is_admin {
+                                                            div {
+                                                                class: "absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-800",
+                                                                span { class: "text-base leading-none", "⠿" }
+                                                            }
 
-                                                        div { class: "font-medium text-gray-900 break-words", "{name}" }
-                                                        div { class: "mt-1 text-sm text-blue-700 break-all", "{url}" }
-
-                                                         if !comments.trim().is_empty() {
-                                                             div {
-                                                                 class: "mt-1 truncate text-xs text-gray-500",
-                                                                 title: comments.clone(),
-                                                                 "{comments}"
-                                                             }
-                                                         }
-
-                                                        if !hashtags.is_empty() {
-                                                            div { class: "mt-3 flex flex-wrap gap-2",
-                                                                for tag in hashtag_tokens.iter() {
-                                                                    span { class: "rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700", "{tag}" }
-                                                                }
+                                                            button {
+                                                                class: "absolute right-3 top-3 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                onclick: move |_| {
+                                                                    mutation_error.set(None);
+                                                                    row_editor.set(Some(RowEditorState {
+                                                                        button_name: row_editor_button_name.clone(),
+                                                                        original_name: Some(row_for_editor.name().to_string()),
+                                                                        draft: RowDraft::from_row(&row_for_editor),
+                                                                    }));
+                                                                },
+                                                                "✎"
                                                             }
                                                         }
 
-                                                        if *has_secret {
-                                                            div { class: "mt-3 text-sm text-gray-700",
-                                                                if let Some(secret_text) = secret_text {
-                                                                    span { class: "rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900 break-all", "{secret_text}" }
-                                                                } else {
-                                                                    span { class: "inline-flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-amber-700",
-                                                                        span { "🔑" }
-                                                                        span { "Secret hidden" }
+                                                        a {
+                                                            class: "block rounded-md pr-10 hover:text-blue-700",
+                                                            href: url.clone(),
+                                                            target: "_blank",
+
+                                                            div { class: "font-medium text-gray-900 break-words", "{name}" }
+                                                            div { class: "mt-1 text-sm text-blue-700 break-all", "{url}" }
+
+                                                            if !comments.trim().is_empty() {
+                                                                div {
+                                                                    class: "mt-1 truncate text-xs text-gray-500",
+                                                                    title: comments.clone(),
+                                                                    "{comments}"
+                                                                }
+                                                            }
+
+                                                            if !hashtags.is_empty() {
+                                                                div { class: "mt-3 flex flex-wrap gap-2",
+                                                                    for tag in hashtag_tokens.iter() {
+                                                                        span { class: "rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700", "{tag}" }
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            if *has_secret {
+                                                                div { class: "mt-3 text-sm text-gray-700",
+                                                                    if let Some(secret_text) = secret_text {
+                                                                        span { class: "rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900 break-all", "{secret_text}" }
+                                                                    } else {
+                                                                        span { class: "inline-flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-amber-700",
+                                                                            span { "🔑" }
+                                                                            span { "Secret hidden" }
+                                                                        }
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                }
                                                 }
                                             },
                                         }
@@ -1191,9 +1171,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(()) => {
-                            // After renaming a button, open its URL-list modal
-                            // using the new name. The refresh below supplies the
-                            // updated button and all of its rows.
                             let saved_button_name = editor.draft.name.clone();
 
                             button_editor.set(None);
@@ -1224,9 +1201,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(cloned_name) => {
-                            // The cloned button is inserted immediately after the
-                            // source. Select that new name so the URL-list modal
-                            // opens on the clone after the dashboard refresh.
                             button_editor.set(None);
                             mutation_error.set(None);
                             status_message.set(Some(format!(
@@ -1351,10 +1325,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(()) => {
-                            // Keep the button selected after saving a row from the
-                            // search pencil.  The dashboard refresh below will load
-                            // the new JSON, so the URL-list modal can show the
-                            // freshly saved row name immediately after the refresh.
                             let edited_button_name = editor.button_name.clone();
 
                             row_editor.set(None);
@@ -1390,9 +1360,6 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
 
                     match result {
                         Ok(cloned_name) => {
-                            // Return to the button's URL-list modal after cloning.
-                            // The refresh loads the newly inserted -1/-2/... row,
-                            // making the result immediately visible to the admin.
                             let cloned_button_name = editor.button_name.clone();
 
                             row_editor.set(None);
@@ -1523,12 +1490,22 @@ fn TagManagerModal(
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
-            // Edit modals must not close from a backdrop click. Escape is the
-            // intentional cancel path so typed data is not lost accidentally.
+
             div {
-                class: "w-full max-w-xl rounded-lg bg-white p-6 shadow-xl",
+                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
                 onclick: move |event| event.stop_propagation(),
-                h2 { class: "text-xl font-semibold text-gray-900", "Manage Tags" }
+
+                // Keep a visible close control on every modal.
+                button {
+                    class: "absolute right-3 top-3 z-10 rounded-full bg-white px-2 py-1 text-xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                    title: "Close",
+                    aria_label: "Close",
+                    disabled: busy,
+                    onclick: move |_| on_close.call(()),
+                    "✕"
+                }
+
+                h2 { class: "pr-10 text-xl font-semibold text-gray-900", "Manage Tags" }
                 p { class: "mt-2 text-sm text-gray-600", "Tags are stored in data_tags.json. The number beside each tag shows how many URL rows currently use it; used tags cannot be removed." }
 
                 div { class: "mt-4 flex gap-2",
@@ -1651,18 +1628,25 @@ fn ReorderConfirmationModal(
         div {
             class: "fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4",
             div {
-                class: "w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl",
+                class: "relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl",
                 onclick: move |event| event.stop_propagation(),
 
+                button {
+                    class: "absolute right-3 top-3 z-10 rounded-full bg-white px-2 py-1 text-xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                    title: "Cancel",
+                    aria_label: "Cancel",
+                    disabled: busy,
+                    onclick: move |_| on_cancel.call(()),
+                    "✕"
+                }
+
                 div {
-                    class: "flex items-start gap-4",
+                    class: "flex items-start gap-4 pr-10",
                     div {
                         class: "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl",
                         "↕"
                     }
-                    // `min-w-0` is important here because this is a flex child.
-                    // Without it, a very long button/URL-row name can force the
-                    // text column wider than the modal itself.
+
                     div {
                         class: "min-w-0 flex-1 overflow-hidden",
                         h2 {
@@ -1670,8 +1654,6 @@ fn ReorderConfirmationModal(
                             "{title}"
                         }
                         p {
-                            // `break-all` handles names made from one enormous
-                            // unbroken string, such as `Rust111111111111...`.
                             class: "mt-2 break-all text-sm leading-6 text-gray-600",
                             "{message}"
                         }
@@ -1725,14 +1707,25 @@ fn ButtonEditorModal(
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
-            // Do not close create/edit forms from a backdrop click. Escape is
-            // the safe cancel path.
 
             div {
-                class: "w-full max-w-xl rounded-lg bg-white p-6 shadow-xl",
+                // `relative` gives the close button a reliable anchor.
+                // `max-h-[90vh]` keeps the modal inside the viewport even when
+                // the browser is zoomed in heavily.
+                // `overflow-y-auto` gives the form its own scrollbar.
+                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
                 onclick: move |event| event.stop_propagation(),
 
-                h2 { class: "text-xl font-semibold text-gray-900",
+                button {
+                    class: "absolute right-3 top-3 z-10 rounded-full bg-white px-2 py-1 text-xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                    title: "Close",
+                    aria_label: "Close",
+                    disabled: busy,
+                    onclick: move |_| on_close.call(()),
+                    "✕"
+                }
+
+                h2 { class: "pr-10 text-xl font-semibold text-gray-900",
                     if is_create { "Add Button" } else { "Edit Button" }
                 }
 
@@ -1905,7 +1898,6 @@ fn RowEditorModal(
                 return;
             };
 
-            // Focus the first useful field when the editor appears.
             if let Some(element) = document.get_element_by_id("row_editor_name") {
                 if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
                     let _ = input.focus();
@@ -1989,19 +1981,32 @@ fn RowEditorModal(
     rsx! {
         div {
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
-            // Do not discard partially entered row data when the backdrop is
-            // clicked. Escape is the intentional cancel path.
 
             div {
                 id: "row_editor_modal",
-                class: "w-full max-w-xl rounded-lg bg-white p-6 shadow-xl",
+
+                // `max-h-[90vh]` keeps the editor inside the visible browser
+                // viewport at high zoom. `overflow-y-auto` creates the scrollbar
+                // on the modal itself rather than letting the page underneath
+                // become the scrolling container.
+                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
                 onclick: move |event| event.stop_propagation(),
 
-                h2 { class: "text-xl font-semibold text-gray-900",
+                // Close button stays anchored to the upper-right of the editor.
+                button {
+                    class: "absolute right-3 top-3 z-10 rounded-full bg-white px-2 py-1 text-xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                    title: "Close",
+                    aria_label: "Close",
+                    disabled: busy,
+                    onclick: move |_| on_close.call(()),
+                    "✕"
+                }
+
+                h2 { class: "pr-10 text-xl font-semibold text-gray-900",
                     if is_create { "Add Row" } else { "Edit Row" }
                 }
 
-                p { class: "mt-2 text-sm text-gray-600",
+                p { class: "mt-2 pr-8 text-sm text-gray-600",
                     "Button: {editor.button_name} • Use this editor to add, edit, delete, or reorder URL rows."
                 }
 
@@ -2128,6 +2133,7 @@ fn RowEditorModal(
 
                             button {
                                 class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
+                                disabled: busy,
                                 onclick: move |_| on_delete.call(()),
                                 "Delete Row"
                             }
