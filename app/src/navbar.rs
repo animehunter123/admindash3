@@ -910,9 +910,18 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                         onfocus: move |event| {
 
-                            search_open.set(true);
+                            // Only reset the highlighted result when the search
+                            // box is being opened for a new search interaction.
+                            //
+                            // IMPORTANT: Enter and middle-click deliberately
+                            // return focus to this input while keeping the
+                            // dropdown open.  Resetting here unconditionally
+                            // would move the highlight back to row 0.
+                            if !search_open() {
+                                selected_index.set(0);
+                            }
 
-                            selected_index.set(0);
+                            search_open.set(true);
 
 
                             let element =
@@ -1284,11 +1293,24 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                         };
 
 
+                                    // Each `move` event handler needs its own owned copy of
+                                    // the URL. `String` is not `Copy`, so the middle-click
+                                    // handler cannot move `result.url` and leave it for the
+                                    // normal click handler.
+                                    // Use a real link rather than `window.open`.
+                                    // Native anchor middle-click behavior lets the browser
+                                    // open a background tab without switching away from this tab.
+                                    let result_url = result.url.clone();
+
                                     rsx! {
 
-                                        button {
+                                        a {
                                             id:
                                                 "search-result-{index}",
+
+                                            href: result_url.clone(),
+                                            target: "_blank",
+                                            rel: "noopener noreferrer",
 
                                             class:
                                                 if is_selected {
@@ -1314,36 +1336,20 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                                 },
 
 
+                                            // A native anchor provides the browser's normal
+                                            // link behavior: middle-click opens a background tab,
+                                            // while Ctrl/Cmd-click and other link gestures also work.
+                                            // Do not call `window.open` here, because that usually
+                                            // switches focus to the newly opened tab.
                                             onclick: move |_| {
+                                                selected_index.set(index);
 
-                                                selected_index
-                                                    .set(index);
-
-
-                                                if let Some(win) =
-                                                    window()
-                                                {
-
-                                                    let _ =
-                                                        win
-                                                            .open_with_url_and_target(
-                                                                &result.url,
-                                                                "_blank",
-                                                            );
-                                                }
-
-
-                                                search.set(
-                                                    String::new()
-                                                );
-
+                                                // Clear the query after an ordinary click. The
+                                                // browser follows the anchor's href in a new tab.
+                                                search.set(String::new());
                                                 browser_storage_remove(SEARCH_STORAGE_KEY);
-
-                                                search_open
-                                                    .set(false);
-
-                                                selected_index
-                                                    .set(0);
+                                                search_open.set(false);
+                                                selected_index.set(0);
                                             },
 
 

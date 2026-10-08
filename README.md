@@ -56,7 +56,7 @@ The jist of it is basically...
 
 # Todo
 * STRETCHGOAL: Do the whole thing again for fun practice with SSR like Topcoat/Axum/Actix, but tbh <3 Dioxus.
-* STRETCHGOAL: Do the whole thing for cp + rshell to merge in this Dioxus. (+bonus for cp/ nginx)
+* STRETCHGOAL: Do the whole thing for cp + rshell + kanban to merge in this Dioxus. (+bonus for cp/ nginx)
 * STRETCHGOAL: Make navbar and buttons hover to edit (css use hover).
 * Hydration SSR of HTML > WASM works, but the addressbar changes for a sec (i dont mind it, but it violates W3C and WCAG!)
 * Add env_logger/log and replace all println() with debug!().
@@ -72,10 +72,8 @@ The jist of it is basically...
 - if you F5 AFTER LOGGING IN AS ADMIN, there is a flicker. Need to figure out what use_server_future or thingy is causing this.
 - MAKE THE COMMENTS FIELD a WYSIG to support images for url rows that is allows a long string of text + images attachments (or a separate attachments)
 - featreq: add a very subtle highlight saying newly updated on the button as well as the button row on first login, and also on every save of a button or a buttonrow. The highlight should only last 15 seconds, look professional and go away, then only re-appear after logout/login 
-
 - sometimes if you TYPE TOO FAST, the search diddnt actually work or take into the textinput field (rare issue)
-* For the searchbox listpopup... Noticed a bug maybe? if you click searcbox > type something > result list pops up > you press down to highlight something in the middle > press enter > go back, the dropdown remains open but the HIGHLIGHTED ROW that you pressed ENTER to OPEN... is reset to top. this might be a thing we can fix useEffect() or something?
-* also... Make middle clicking the searchbox listpopup to work in new window (need a click handler)
+
 
 v3, v4, v5:
 - refactor code so that there is a "./src/adminbuttons" module, and future cp/rm modules
