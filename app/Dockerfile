@@ -9,50 +9,33 @@
 
 
 FROM ubuntu
+#FROM alpine  # IMPORTANT: <--- I cant use this because Alpine does not normally have the glibc loader /lib64/ld-linux-x86-x64...
 
-# 1. Install system dependencies, git, and libraries needed to build Rust crates
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    vim \
-    less \
-    && rm -rf /var/lib/apt/lists/*
+# DISABLED THIS SECTION TO SHRINK THE UBUNTU CONTAINER TO 40M
+# 1. Install system dependencies, git, and libraries needed to build Rust crates 
+#RUN apt-get update && apt-get install -y \
+#    curl \
+#    git \
+#    vim \
+#    less \
+#    && rm -rf /var/lib/apt/lists/*
 
-# Removed these
-#    build-essential \
-#    pkg-config \
-#    libssl-dev \
 
-# NOT NEEDED: 2. Install Rust & Cargo using rustup (safer and newer than apt-get cargo)
-#RUN curl --proto '=https' --tlsv1.2 -sSf https://rustup.rs | sh -s -- -y
-#ENV PATH="/root/.cargo/bin:${PATH}"
-
-# NOT NEEDED: 3. Install Dioxus CLI
-#RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-#RUN cargo binstall dioxus-cli --root /.cargo -y --force
-#ENV PATH="/.cargo/bin:$PATH"
-
-# NOT NEEDED: Create the final bundle folder. Bundle with release BUT WE DONT 
-# DO THIS ANYMORE BECAUSE THE HOST NOW PRODUCES THE BINARY WHICH HAS THE .git HASH.
-#RUN dx bundle --web --release
+# Use this host compiled binary and source directories (x86-64) directly in the container (instead of using the rust:latest container).
+# This is not following the dioxus guide, because we need the git revparse environment variable at compile time, unsure of how to 
+# get around it at this time.
 RUN mkdir /usr/local/app/
 WORKDIR /usr/local/app
 COPY . .
 
+# Ensure that the ./server binary is at the top level, this one is actually used (we should really do a MOVE not a COPY here).
 COPY ./target/dx/Admindash3/release/web/ /usr/local/app
-#COPY data_buttons.json /usr/local/app
-#COPY data_navbar.json /usr/local/app
 
-# THIS HAS OUR ACTUAL FILES! (TODO: SHOULD RENAME THESE BETTER)
-#COPY --from=admindash3-builder /app/target/dx/Admindash3/release/web/ /usr/local/app
-#COPY data_buttons.json /usr/local/app
-#COPY data_navbar.json /usr/local/app
-
-# set our port and make sure to listen for all connections
+# Set our port and make sure to listen for all connections
 ENV PORT=80
 ENV IP=0.0.0.0
 
-# expose the port 80
+# Expose the port 80
 EXPOSE 80
 
 WORKDIR /usr/local/app

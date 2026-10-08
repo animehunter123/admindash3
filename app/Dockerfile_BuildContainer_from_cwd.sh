@@ -44,6 +44,10 @@ echo "COMPILE: Rebuilding the release binary with the EMBEDDED GIT COMMIT HASH..
 rm -rf target/dx/Admindash3/release/ 2>/dev/null 1>/dev/null
 dx bundle --web --release
 
+# Remove other compiled targets and only leave the webserver binary - to make the container decrease from 500mb to only 40mb!!!
+rm -rf /tmp/web ; mv ./target/dx/Admindash3/release/web/ /tmp ; rm -rf ./target/ ; mkdir -p ./target/dx/Admindash3/release/ ; mv /tmp/web ./target/dx/Admindash3/release/
+
+# Use docker build instead of buildx until Dioxus docs say to do so in the future.
 docker build \
   -t admindash3:$version \
   -t admindash3:latest \

@@ -1,6 +1,6 @@
 [package]
 name = "Admindash3"
-version = "2.6.5"
+version = "2.6.6"
 authors = ["ahm <ahm>"]
 edition = "2024"
 
