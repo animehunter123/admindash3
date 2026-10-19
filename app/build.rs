@@ -82,6 +82,29 @@ fn main() {
     println!("cargo:rustc-env=RUSTC_VERSION={version}");
 
     // -------------------------------------------------------------------------
+    // GET DIOXUS WEB VERSION FROM CARGO.TOML
+    // -------------------------------------------------------------------------
+    //
+    // Cargo does not automatically expose a dependency's version as an
+    // environment variable. Read the dioxus-web dependency declaration and
+    // export it so footer.rs can display the actual version used by this app.
+    //
+    // Keeping the version in Cargo.toml as the source of truth means there is
+    // no second hardcoded version to remember to update.
+    // -------------------------------------------------------------------------
+
+    let cargo_toml = std::fs::read_to_string("Cargo.toml").expect("Failed to read Cargo.toml");
+
+    let dioxus_web_version = cargo_toml
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("dioxus-web") && line.contains('='))
+        .and_then(|line| line.split('"').nth(1))
+        .expect("Could not find a quoted dioxus-web version in Cargo.toml");
+
+    println!("cargo:rustc-env=DIOXUS_WEB_VERSION={dioxus_web_version}");
+
+    // -------------------------------------------------------------------------
     // BUILD SCRIPT RERUN RULES
     // -------------------------------------------------------------------------
     //
@@ -96,4 +119,5 @@ fn main() {
     // -------------------------------------------------------------------------
 
     println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=Cargo.toml");
 }

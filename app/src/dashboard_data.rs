@@ -21,7 +21,9 @@ pub const BUTTONS_V3_FILE: &str = "./data_buttons.v3.json";
 pub const TAGS_FILE: &str = "./data_tags.json";
 pub const SYSTEM_PREFERENCES_FILE: &str = "./system_preferences.json";
 pub const HISTORY_DIR: &str = "./dashboard_history";
+pub const FULL_BACKUP_DIR: &str = "./dashboard_backups";
 pub const MAX_HISTORY_SNAPSHOTS: usize = 100;
+pub const MAX_FULL_BACKUPS: usize = 30;
 
 // -----------------------------------------------------------------------------
 // ADMIN EXPORT
@@ -50,7 +52,11 @@ pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, 
         let entry = entry.context("Could not inspect a dashboard data file")?;
         let path = entry.path();
 
-        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
             continue;
         }
 
@@ -127,24 +133,20 @@ fn add_history_directory_to_zip(
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
             // Store the directory entry too. This makes the archive structure
             // obvious even when a history directory is empty.
-            let directory_name = format!(
-                "{}/",
-                archive_path.to_string_lossy().replace('\\', "/")
-            );
+            let directory_name = format!("{}/", archive_path.to_string_lossy().replace('\\', "/"));
             archive
                 .add_directory(&directory_name, *options)
                 .with_context(|| format!("Could not add {} to the export", directory_name))?;
 
-            add_history_directory_to_zip(
-                archive,
-                &path,
-                &archive_path,
-                options,
-            )?;
+            add_history_directory_to_zip(archive, &path, &archive_path, options)?;
             continue;
         }
 
-        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
             continue;
         }
 
@@ -584,6 +586,97 @@ pub fn parse_dashboard_document(path: &Path, file_text: &str) -> Result<Dashboar
 // as its own standalone module.
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+/* FULL AUTOMATIC BACKUP
+ *
+ * The original JSON snapshots in dashboard_history are intentionally retained:
+ * the existing history/minidiff UI expects each of those files to be one JSON
+ * dashboard document. Do NOT change that format.
+ *
+ * Alongside those compatible snapshots, this helper creates a separate folder
+ * per backup containing every top-level JSON file (buttons, tags, navbar,
+ * preferences, etc.) plus the dashboard_history directory. This gives us a
+ * complete restore point without changing the files consumed by minidiff.
+ */
+// -----------------------------------------------------------------------------
+
+pub fn backup_all_json_files() -> Result<()> {
+    let backup_root = Path::new(FULL_BACKUP_DIR);
+    std::fs::create_dir_all(backup_root)
+        .with_context(|| format!("Could not create {}", backup_root.display()))?;
+
+    // Reuse the existing timestamp naming convention, but use a folder name
+    // instead of a dashboard-*.json filename.
+    let timestamped_name = make_history_filename()?;
+    let timestamp = timestamped_name
+        .strip_prefix("dashboard-")
+        .and_then(|value| value.strip_suffix(".json"))
+        .unwrap_or("backup");
+    let destination = backup_root.join(format!("backup-{timestamp}"));
+    std::fs::create_dir_all(&destination)
+        .with_context(|| format!("Could not create {}", destination.display()))?;
+
+    // Copy every top-level JSON file into the backup folder's root.
+    for entry in std::fs::read_dir(".").context("Could not read the dashboard data directory")? {
+        let entry = entry.context("Could not inspect a dashboard data file")?;
+        let path = entry.path();
+        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let is_json = path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+        if is_json {
+            std::fs::copy(&path, destination.join(entry.file_name()))
+                .with_context(|| format!("Could not back up {}", path.display()))?;
+        }
+    }
+
+    // Preserve dashboard_history using the same relative folder name as Export ZIP.
+    let history_path = Path::new(HISTORY_DIR);
+    if history_path.is_dir() {
+        copy_directory_recursively(history_path, &destination.join("dashboard_history"))?;
+    }
+
+    // Keep only the newest full-backup folders. These are separate from the
+    // minidiff-compatible dashboard_history snapshots and do not affect them.
+    let mut backups: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(backup_root)?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let is_dir = entry.file_type().ok()?.is_dir();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            (is_dir && name.starts_with("backup-")).then_some((name, entry.path()))
+        })
+        .collect();
+    backups.sort_by(|left, right| left.0.cmp(&right.0));
+    for (_, old_path) in backups.into_iter().rev().skip(MAX_FULL_BACKUPS) {
+        std::fs::remove_dir_all(old_path)?;
+    }
+
+    Ok(())
+}
+
+fn copy_directory_recursively(source: &Path, destination: &Path) -> Result<()> {
+    std::fs::create_dir_all(destination)
+        .with_context(|| format!("Could not create {}", destination.display()))?;
+    for entry in std::fs::read_dir(source)
+        .with_context(|| format!("Could not read {}", source.display()))?
+    {
+        let entry = entry.context("Could not inspect a backup entry")?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_directory_recursively(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            std::fs::copy(&source_path, &destination_path)
+                .with_context(|| format!("Could not copy {}", source_path.display()))?;
+        }
+    }
+    Ok(())
+}
+
 pub fn backup_dashboard_file(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
@@ -778,6 +871,10 @@ pub fn write_dashboard_document(path: &Path, document: &DashboardDocument) -> Re
     // This lives in dashboard_data.rs so the standalone migration binary
     // can also compile dashboard_data.rs without needing the UI history module.
     backup_dashboard_file(path)?;
+
+    // Also capture a full multi-file restore point. The legacy one-file history
+    // snapshot above remains untouched for History/minidiff compatibility.
+    backup_all_json_files()?;
 
     let json = serde_json::to_string_pretty(&document_to_stored_dashboard(document))
         .with_context(|| format!("Could not serialize {}", path.display()))?;
@@ -1049,6 +1146,100 @@ pub fn clone_row(
     Ok(cloned_name)
 }
 
+/// Move a link row into another button, or into a newly-created button.
+///
+/// Dividers are deliberately excluded: this action is specifically for URLs.
+/// A source button must retain at least one row so the dashboard's existing
+/// button/row validation rules remain satisfied.
+pub fn move_row(
+    path: &Path,
+    credentials: &AdminCredentials,
+    source_button_name: &str,
+    row_name: &str,
+    destination_button_name: &str,
+    new_button_name: Option<&str>,
+) -> Result<String> {
+    ensure_admin(credentials)?;
+
+    let mut document = read_dashboard_document(path)?;
+
+    let source_index = document
+        .buttons
+        .iter()
+        .position(|button| button.name == source_button_name)
+        .ok_or_else(|| anyhow!("Could not find button '{source_button_name}'."))?;
+
+    if new_button_name.is_none() && source_button_name == destination_button_name {
+        bail!("Choose a different destination button.");
+    }
+
+    let row_index = document.buttons[source_index]
+        .rows
+        .iter()
+        .position(|row| row.name() == row_name)
+        .ok_or_else(|| {
+            anyhow!("Could not find row '{row_name}' in button '{source_button_name}'.")
+        })?;
+
+    let row_to_move = document.buttons[source_index].rows[row_index].clone();
+    if !matches!(&row_to_move, ButtonRow::Link { .. }) {
+        bail!("Only URL rows can be moved.");
+    }
+
+    if document.buttons[source_index].rows.len() <= 1 {
+        bail!("This is the last row in the source button. Add another row before moving this URL.");
+    }
+
+    let destination_name = if let Some(new_name) = new_button_name {
+        let clean_name = new_name.trim();
+        if clean_name.is_empty() {
+            bail!("Enter a name for the new destination button.");
+        }
+        if document
+            .buttons
+            .iter()
+            .any(|button| button.name.eq_ignore_ascii_case(clean_name))
+        {
+            bail!("A button named '{clean_name}' already exists.");
+        }
+        clean_name.to_string()
+    } else {
+        let clean_name = destination_button_name.trim();
+        if clean_name.is_empty() {
+            bail!("Choose a destination button.");
+        }
+        let destination = document
+            .buttons
+            .iter()
+            .find(|button| button.name == clean_name)
+            .ok_or_else(|| anyhow!("Could not find destination button '{clean_name}'."))?;
+        if destination.rows.iter().any(|row| row.name() == row_name) {
+            bail!("A URL named '{row_name}' already exists in button '{clean_name}'.");
+        }
+        clean_name.to_string()
+    };
+
+    // Remove only after all validation that does not depend on the removal.
+    document.buttons[source_index].rows.remove(row_index);
+
+    if new_button_name.is_some() {
+        document.buttons.push(ButtonGroup {
+            name: destination_name.clone(),
+            rows: vec![row_to_move],
+        });
+    } else {
+        let destination = document
+            .buttons
+            .iter_mut()
+            .find(|button| button.name == destination_name)
+            .ok_or_else(|| anyhow!("Could not find destination button '{destination_name}'."))?;
+        destination.rows.push(row_to_move);
+    }
+
+    write_dashboard_document(path, &document)?;
+    Ok(destination_name)
+}
+
 pub fn delete_row(
     path: &Path,
     credentials: &AdminCredentials,
@@ -1208,6 +1399,10 @@ pub fn save_managed_tags(credentials: &AdminCredentials, tags: Vec<String>) -> R
 
     let json =
         serde_json::to_string_pretty(&normalized).context("Could not serialize managed tags")?;
+
+    // Back up all JSON data before changing tags, too. This captures the
+    // current buttons/tags/navbar/preferences together as one restore point.
+    backup_all_json_files()?;
 
     std::fs::write(TAGS_FILE, format!("{json}\n"))
         .with_context(|| format!("Could not write {}", TAGS_FILE))?;
@@ -1950,4 +2145,3 @@ impl ButtonRow {
         }
     }
 }
-

@@ -64,13 +64,22 @@ pub fn Footer() -> Element {
     // environment variables.
     // -------------------------------------------------------------------------
 
-    let version = concat!(
-        env!("CARGO_PKG_VERSION"),
-        "-",
-        env!("GIT_HASH"),
-        "; compiled with rust v",
-        env!("RUSTC_VERSION")
-    );
+    // Current footer row: show the version of dioxus-web from Cargo.toml.
+    // build.rs reads that dependency version and exports DIOXUS_WEB_VERSION.
+    let version = concat!(env!("CARGO_PKG_VERSION"), "-", env!("GIT_HASH"));
+    let dioxus_web_version = env!("DIOXUS_WEB_VERSION");
+
+    // @@@@ OLD FOOTER ROW - KEEP THIS COMMENTED OUT FOR EASY SWITCHING @@@@
+    // Uncomment this variable and the old RSX row below if you want to display
+    // the Rust compiler version again. The current row uses DIOXUS_WEB_VERSION.
+    // let rust_version = concat!(
+    //     env!("CARGO_PKG_VERSION"),
+    //     "-",
+    //     env!("GIT_HASH"),
+    //     "; compiled with rust v",
+    //     env!("RUSTC_VERSION")
+    // );
+    // @@@@ END OLD FOOTER ROW @@@@
 
     // -------------------------------------------------------------------------
     // RENDER FOOTER
@@ -88,7 +97,12 @@ pub fn Footer() -> Element {
                     text-sm
                     text-center",
 
-            "Admindash3 v{version}"
+            // @@@@ CURRENT FOOTER ROW - DIOXUS WEB VERSION COMES FROM CARGO.TOML
+            "Admindash3 v{version} • Built with Dioxus v{dioxus_web_version}"
+
+            // @@@@ OLD FOOTER ROW - UNCOMMENT TO SWITCH BACK TO RUST VERSION @@@@
+            // "Admindash3 v{rust_version}"
+            // @@@@ END OLD FOOTER ROW @@@@
         }
 
     }

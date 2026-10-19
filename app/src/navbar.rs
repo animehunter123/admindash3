@@ -444,6 +444,76 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                 let key = event.key();
 
+                // -----------------------------------------------------------------
+                // MODAL KEYBOARD FOCUS TRAP
+                // -----------------------------------------------------------------
+                // All dashboard, login/logout, and history dialogs use the
+                // `modal-window` class. The last matching element in document
+                // order is the topmost modal (for example, Edit Row above the
+                // URL-list dialog). Keep Tab and Shift+Tab inside that dialog.
+                //
+                // This lives in Navbar because Navbar stays mounted while the
+                // dashboard switches between its main view and History.
+                if key == "Tab" {
+                    if let Ok(modals) =
+                        document_for_handler.query_selector_all(".modal-window")
+                    {
+                        let modal = (0..modals.length())
+                            .rev()
+                            .find_map(|index| modals.item(index));
+
+                        if let Some(modal_node) = modal {
+                            // `NodeList::item()` returns a generic `Node`.
+                            // `query_selector_all()` is defined on `Element`,
+                            // so cast the modal node before searching inside it.
+                            if let Ok(modal) = modal_node.dyn_into::<web_sys::Element>() {
+                                if let Ok(focusable_nodes) = modal.query_selector_all(
+                                    "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+                                ) {
+                                let mut focusable =
+                                    Vec::<web_sys::HtmlElement>::new();
+
+                                for index in 0..focusable_nodes.length() {
+                                    if let Some(node) = focusable_nodes.item(index) {
+                                        if let Ok(element) =
+                                            node.dyn_into::<web_sys::HtmlElement>()
+                                        {
+                                            focusable.push(element);
+                                        }
+                                    }
+                                }
+
+                                if !focusable.is_empty() {
+                                    let active = document_for_handler.active_element();
+                                    let current_index = active.as_ref().and_then(|active| {
+                                        if !modal.contains(Some(active)) {
+                                            return None;
+                                        }
+
+                                        focusable.iter().position(|element| {
+                                            element.is_same_node(Some(active))
+                                        })
+                                    });
+
+                                    let next_index = match (current_index, event.shift_key()) {
+                                        (Some(0), true) => focusable.len() - 1,
+                                        (Some(index), true) => index - 1,
+                                        (Some(index), false) if index + 1 == focusable.len() => 0,
+                                        (Some(index), false) => index + 1,
+                                        (None, true) => focusable.len() - 1,
+                                        (None, false) => 0,
+                                    };
+
+                                    event.prevent_default();
+                                    let _ = focusable[next_index].focus();
+                                    return;
+                                }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Escape closes the Admin Login modal.
                 //
                 // This is handled before the normal form-field check
@@ -463,7 +533,32 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                     return;
                 }
 
-                if key == "\\" {
+                // Do not let the Admin Login/Logout shortcut steal a
+                // backslash typed into URL names, secrets, or other edit fields.
+                // These IDs exist only while the corresponding edit modal is open.
+                // Japanese Mac keyboards may report the physical backslash key as
+                // either "\\" or "¥". Treat both spellings identically.
+                let is_backslash_shortcut =
+                    key == "\\" || key == "¥" || key == "￥" || event.code() == "Backslash";
+
+                // While any editor modal is mounted, let the character pass through
+                // normally. Clone and Move URL controls live inside these same editor
+                // modals, and the Create Button modal is covered by its own ID.
+                if is_backslash_shortcut
+                    && (document_for_handler
+                        .get_element_by_id("row_editor_modal")
+                        .is_some()
+                        || document_for_handler
+                            .get_element_by_id("button_editor_modal")
+                            .is_some()
+                        || document_for_handler
+                            .get_element_by_id("tag_manager_modal")
+                            .is_some())
+                {
+                    return;
+                }
+
+                if is_backslash_shortcut {
                     event.prevent_default();
 
                     if ADMIN_AUTH.peek().is_admin() {
@@ -1315,20 +1410,20 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                             class:
                                                 if is_selected {
 
-                                                    "group block w-full
+                                                    "group relative block w-full
                                                      border-b
                                                      border-gray-100
                                                      bg-blue-50
-                                                     px-4 py-3
+                                                     px-4 py-3 pr-12
                                                      text-left
                                                      text-blue-800"
 
                                                 } else {
 
-                                                    "group block w-full
+                                                    "group relative block w-full
                                                      border-b
                                                      border-gray-100
-                                                     px-4 py-3
+                                                     px-4 py-3 pr-12
                                                      text-left
                                                      text-gray-800
                                                      hover:bg-blue-50
@@ -1416,7 +1511,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                                             if ADMIN_AUTH().is_admin() {
                                                 span {
-                                                    class: "float-right ml-2 cursor-pointer rounded px-1.5 py-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-700 group-hover:opacity-100",
+                                                    class: "pointer-events-auto absolute right-3 top-1/2 z-20 -translate-y-1/2 cursor-pointer rounded px-1.5 py-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-700 group-hover:opacity-100",
                                                     title: "Edit this URL row",
                                                     onclick: move |event| {
                                                         event.stop_propagation();
@@ -1654,7 +1749,8 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                 onclick: move |_| logout_open.set(false),
 
                 div {
-                    class: "w-full max-w-sm rounded-lg bg-white p-6 shadow-xl",
+                    class: "modal-window w-full max-w-sm rounded-lg bg-white p-6 shadow-xl",
+                    style: "resize: both; overflow: auto; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                     onclick: move |event| event.stop_propagation(),
 
                     h2 {
@@ -1747,10 +1843,11 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                 div {
                     class:
-                        "w-full max-w-sm
+                        "modal-window w-full max-w-sm
                          rounded-lg
                          bg-white p-6
                          shadow-xl",
+                    style: "resize: both; overflow: auto; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
 
                     onclick: move |event| {
                         event.stop_propagation();
@@ -2287,3 +2384,4 @@ async fn authenticate_admin_server(
         })
     }
 }
+

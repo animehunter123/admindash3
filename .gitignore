@@ -11,6 +11,7 @@ target/
 
 # This DIRECTORY IS ALREADY CREATED ON INITIAL SAVE, no need to keep it in git
 dashboard_history
+app/dashboard_backups
 
 # This is a helper binary copied to the top level in case we need to migrate json v1 to json v2 files.
 data_button_v2_migrator

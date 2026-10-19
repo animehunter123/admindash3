@@ -2,9 +2,7 @@ use crate::dashboard_data::{
     AdminCredentials, ButtonCreateInput, ButtonRenameInput, ButtonRowInput, ButtonRowView,
     DashboardPayload, RowKind,
 };
-use crate::{
-    ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, HISTORY_PAGE,
-};
+use crate::{ADMIN_AUTH, DASHBOARD_REFRESH_KEY, EDIT_ROW_REQUEST, HISTORY_PAGE};
 use dioxus::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -13,6 +11,7 @@ struct ButtonDraft {
     first_row_name: String,
     first_row_url: String,
     first_row_hashtags: String,
+    first_row_comments: String,
     first_row_secrets: String,
 }
 
@@ -22,10 +21,18 @@ struct ButtonEditorState {
     draft: ButtonDraft,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum ButtonEditorMode {
     Create,
-    Edit { original_name: String },
+    Edit {
+        original_name: String,
+    },
+    // The row editor requested a new destination. Keep the source row identified
+    // until the user confirms the pre-filled Create Button modal.
+    MoveToCreate {
+        source_button_name: String,
+        row_name: String,
+    },
 }
 
 #[derive(Clone, PartialEq)]
@@ -71,6 +78,7 @@ impl Default for ButtonDraft {
             first_row_name: String::new(),
             first_row_url: String::new(),
             first_row_hashtags: String::new(),
+            first_row_comments: String::new(),
             first_row_secrets: String::new(),
         }
     }
@@ -313,6 +321,14 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
     // from the same payload already displayed by the dashboard, so the count
     // stays simple and immediately reflects the latest refresh.
     let tag_usage_counts = calculate_tag_usage_counts(&payload);
+
+    // The move handler needs its own payload copy so its `move` closure does not
+    // take ownership of the payload used by the rest of the dashboard render.
+    let payload_for_move = payload.clone();
+
+    // This clone is used only by the divider-name callback. Keeping it separate
+    // means the callback does not move the payload used by the rest of the UI.
+    let payload_for_divider_names = payload.clone();
 
     rsx! {
         div { class: "container mx-auto px-4 mt-6",
@@ -612,32 +628,40 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                     }));
                                 },
 
+                                // Keep the admin controls together in one small
+                                // row at the card's top-right. Previously each
+                                // control had its own absolute position, which
+                                // could overlap depending on card/text layout.
                                 if is_admin {
-                                    button {
-                                        class: "absolute right-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-white",
-                                        onclick: move |event| {
-                                            event.stop_propagation();
-                                            event.prevent_default();
-                                            mutation_error.set(None);
-                                            button_editor.set(Some(ButtonEditorState {
-                                                mode: ButtonEditorMode::Edit {
-                                                    original_name: button_for_editor.name.clone(),
-                                                },
-                                                draft: ButtonDraft {
-                                                    name: button_for_editor.name.clone(),
-                                                    ..ButtonDraft::default()
-                                                },
-                                            }));
-                                        },
-                                        "✎"
-                                    }
-                                }
-
-                                if is_admin && !autosort_enabled() {
                                     div {
-                                        class: "absolute right-2 top-10 z-10 rounded-full bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800 shadow",
-                                        title: "Drag this main button to another position.",
-                                        "⠿"
+                                        class: "absolute right-2 top-2 z-10 flex items-center gap-1",
+                                        button {
+                                            class: "rounded-full bg-white/95 px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-white",
+                                            title: "Edit this button",
+                                            onclick: move |event| {
+                                                event.stop_propagation();
+                                                event.prevent_default();
+                                                mutation_error.set(None);
+                                                button_editor.set(Some(ButtonEditorState {
+                                                    mode: ButtonEditorMode::Edit {
+                                                        original_name: button_for_editor.name.clone(),
+                                                    },
+                                                    draft: ButtonDraft {
+                                                        name: button_for_editor.name.clone(),
+                                                        ..ButtonDraft::default()
+                                                    },
+                                                }));
+                                            },
+                                            "✎"
+                                        }
+
+                                        if !autosort_enabled() {
+                                            div {
+                                                class: "rounded-full bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800 shadow",
+                                                title: "Drag this main button to another position.",
+                                                "⠿"
+                                            }
+                                        }
                                     }
                                 }
 
@@ -685,7 +709,8 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                         },
 
                         div {
-                            class: "relative max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
+                            class: "modal-window relative max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                            style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                             onclick: move |event| {
                                 event.stop_propagation();
                             },
@@ -821,23 +846,30 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                                         }
 
                                                         if is_admin {
+                                                            // Keep both controls in one top-right row. Separate absolute
+                                                            // top/bottom positions caused them to collide on short rows.
                                                             div {
-                                                                class: "absolute bottom-2 right-3 rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
-                                                                title: "Drag divider to reorder",
-                                                                "⠿"
-                                                            }
-
-                                                            button {
-                                                                class: "absolute right-3 top-2 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                                onclick: move |_| {
-                                                                    mutation_error.set(None);
-                                                                    row_editor.set(Some(RowEditorState {
-                                                                        button_name: row_editor_button_name.clone(),
-                                                                        original_name: Some(row_for_editor.name().to_string()),
-                                                                        draft: RowDraft::from_row(&row_for_editor),
-                                                                    }));
-                                                                },
-                                                                "✎"
+                                                                class: "absolute right-3 top-2 z-10 flex items-center gap-1",
+                                                                button {
+                                                                    class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                    title: "Edit divider row",
+                                                                    onclick: move |event| {
+                                                                        event.stop_propagation();
+                                                                        event.prevent_default();
+                                                                        mutation_error.set(None);
+                                                                        row_editor.set(Some(RowEditorState {
+                                                                            button_name: row_editor_button_name.clone(),
+                                                                            original_name: Some(row_for_editor.name().to_string()),
+                                                                            draft: RowDraft::from_row(&row_for_editor),
+                                                                        }));
+                                                                    },
+                                                                    "✎"
+                                                                }
+                                                                div {
+                                                                    class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
+                                                                    title: "Drag divider to reorder",
+                                                                    "⠿"
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -903,22 +935,31 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                                         },
 
                                                         if is_admin {
+                                                            // Anchor the edit and drag controls together instead of
+                                                            // centering the pencil vertically; long and short rows now
+                                                            // use the same predictable control position.
                                                             div {
-                                                                class: "absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-[11px] font-medium text-blue-800",
-                                                                span { class: "text-base leading-none", "⠿" }
-                                                            }
-
-                                                            button {
-                                                                class: "absolute right-3 top-3 rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                                onclick: move |_| {
-                                                                    mutation_error.set(None);
-                                                                    row_editor.set(Some(RowEditorState {
-                                                                        button_name: row_editor_button_name.clone(),
-                                                                        original_name: Some(row_for_editor.name().to_string()),
-                                                                        draft: RowDraft::from_row(&row_for_editor),
-                                                                    }));
-                                                                },
-                                                                "✎"
+                                                                class: "absolute right-3 top-2 z-10 flex items-center gap-1",
+                                                                button {
+                                                                    class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                    title: "Edit URL row",
+                                                                    onclick: move |event| {
+                                                                        event.stop_propagation();
+                                                                        event.prevent_default();
+                                                                        mutation_error.set(None);
+                                                                        row_editor.set(Some(RowEditorState {
+                                                                            button_name: row_editor_button_name.clone(),
+                                                                            original_name: Some(row_for_editor.name().to_string()),
+                                                                            draft: RowDraft::from_row(&row_for_editor),
+                                                                        }));
+                                                                    },
+                                                                    "✎"
+                                                                }
+                                                                div {
+                                                                    class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
+                                                                    title: "Drag URL row to reorder",
+                                                                    span { class: "text-base leading-none", "⠿" }
+                                                                }
                                                             }
                                                         }
 
@@ -1121,6 +1162,12 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                         button_editor.set(Some(current));
                     }
                 },
+                on_first_row_comments_input: move |value: String| {
+                    if let Some(mut current) = button_editor() {
+                        current.draft.first_row_comments = value;
+                        button_editor.set(Some(current));
+                    }
+                },
                 on_first_row_secrets_input: move |value: String| {
                     if let Some(mut current) = button_editor() {
                         current.draft.first_row_secrets = value;
@@ -1148,7 +1195,7 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                         kind: RowKind::Link,
                                         url: editor.draft.first_row_url.clone(),
                                         hashtags: editor.draft.first_row_hashtags.clone(),
-                                        comments: String::new(),
+                                        comments: editor.draft.first_row_comments.clone(),
                                         secrets: editor.draft.first_row_secrets.clone(),
                                     },
                                 },
@@ -1162,8 +1209,52 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                     original_name,
                                     name: editor.draft.name.clone(),
                                 },
+                            ).await
+                        }
+                        ButtonEditorMode::MoveToCreate { source_button_name, row_name } => {
+                            // Create the destination button using the normal button-creation
+                            // path, with the URL row already filled in by the row editor.
+                            //
+                            // The previous implementation called move_row_server with an
+                            // empty destination name and a separate new-button name. That
+                            // delegated the whole operation to the special move-to-new-button
+                            // path, which could move the row without reliably creating the
+                            // destination button.
+                            //
+                            // Create the new button first so the URL is safely stored there.
+                            // Only after creation succeeds do we remove the original row.
+                            // This ordering is deliberate: if creation fails, the original
+                            // URL remains untouched.
+                            let create_result = create_button_server(
+                                credentials,
+                                ButtonCreateInput {
+                                    name: editor.draft.name.clone(),
+                                    first_row: ButtonRowInput {
+                                        original_name: None,
+                                        name: editor.draft.first_row_name.clone(),
+                                        kind: RowKind::Link,
+                                        url: editor.draft.first_row_url.clone(),
+                                        hashtags: editor.draft.first_row_hashtags.clone(),
+                                        comments: editor.draft.first_row_comments.clone(),
+                                        secrets: editor.draft.first_row_secrets.clone(),
+                                    },
+                                },
                             )
-                            .await
+                            .await;
+
+                            match create_result {
+                                Ok(()) => {
+                                    // The destination now exists and contains a copy of the
+                                    // complete row. Remove the source copy to finish the move.
+                                    delete_row_server(
+                                        ADMIN_AUTH(),
+                                        source_button_name,
+                                        row_name,
+                                    )
+                                    .await
+                                }
+                                Err(error) => Err(error),
+                            }
                         }
                     };
 
@@ -1246,8 +1337,13 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
             }
         }
 
-        if let Some(editor) = row_editor() {
-            RowEditorModal {
+        // Only show one modal at a time. When moving a URL into a new button,
+        // the click handler sets `button_editor` and clears `row_editor` in the
+        // same event. This guard also prevents a still-rendering row modal from
+        // sitting on top of the new Create Button modal during that transition.
+        if button_editor().is_none() {
+            if let Some(editor) = row_editor() {
+                RowEditorModal {
                 editor: editor.clone(),
                 busy: mutation_busy(),
                 error_message: mutation_error(),
@@ -1257,6 +1353,19 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                 },
                 on_kind_change: move |kind: RowKind| {
                     if let Some(mut current) = row_editor() {
+                        // When switching a row to Divider, choose the first
+                        // DIVIDER number not already used by this button.
+                        // The parser requires divider names to contain uppercase
+                        // "DIVIDER", so we generate that exact spelling.
+                        if kind == RowKind::Divider && current.draft.kind != RowKind::Divider {
+                            let existing_rows = payload_for_divider_names.buttons
+                                .iter()
+                                .find(|button| button.name == current.button_name)
+                                .map(|button| button.rows.as_slice())
+                                .unwrap_or(&[]);
+                            current.draft.name = next_divider_name(existing_rows);
+                        }
+
                         current.draft.kind = kind;
                         row_editor.set(Some(current));
                     }
@@ -1274,6 +1383,105 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                     }
                 },
                 available_tags: payload.available_tags.clone(),
+                source_is_only_row: payload.buttons.iter()
+                    .find(|button| button.name == editor.button_name)
+                    .map(|button| button.rows.len() <= 1)
+                    .unwrap_or(false),
+                available_buttons: {
+                    let mut names: Vec<String> = payload.buttons.iter()
+                        .map(|button| button.name.clone())
+                        .collect();
+                    names.sort_by_key(|name| name.to_lowercase());
+                    names
+                },
+                on_move: move |(destination, new_button_name): (String, Option<String>)| {
+                    let Some(current_row_editor) = row_editor() else {
+                        return;
+                    };
+                    let Some(original_name) = current_row_editor.original_name.clone() else {
+                        return;
+                    };
+                    let source_button = current_row_editor.button_name.clone();
+
+                    // Moving the only row would leave an invalid empty button. In
+                    // that special case, open the existing Edit Button modal so the
+                    // user can rename this button instead; the URL remains intact.
+                    let source_row_count = payload_for_move.buttons.iter()
+                        .find(|button| button.name == source_button)
+                        .map(|button| button.rows.len())
+                        .unwrap_or(0);
+                    if source_row_count <= 1 {
+                        // Close the row editor first, then open the button editor.
+                        // This avoids a render where both modal states are active.
+                        row_editor.set(None);
+                        mutation_error.set(None);
+                        button_editor.set(Some(ButtonEditorState {
+                            mode: ButtonEditorMode::Edit { original_name: source_button.clone() },
+                            draft: ButtonDraft {
+                                name: source_button,
+                                ..ButtonDraft::default()
+                            },
+                        }));
+                        return;
+                    }
+
+                    // Creating a destination uses the regular Create Button modal,
+                    // prefilled with the complete URL row. The row is not removed
+                    // from its source until the user confirms that modal.
+                    // Treat the explicit sentinel (and the empty destination used by
+                    // the create-new-button action) as a request to open the modal.
+                    // Do not rely only on `new_button_name`: the row modal's event
+                    // payload can vary while the destination select is changing, and
+                    // falling through would incorrectly move the URL to an existing
+                    // button without asking for a new button name.
+                    let wants_new_button = new_button_name.is_some()
+                        || destination == "__new_button__"
+                        || destination.is_empty();
+
+                    if wants_new_button {
+                        // Build the destination editor state before opening it.
+                        // Clear the row modal first so its state cannot mask or
+                        // interfere with the new-button modal during this update.
+                        let next_button_editor = ButtonEditorState {
+                            mode: ButtonEditorMode::MoveToCreate {
+                                source_button_name: source_button,
+                                row_name: original_name,
+                            },
+                            draft: ButtonDraft {
+                                name: String::new(),
+                                first_row_name: current_row_editor.draft.name.clone(),
+                                first_row_url: current_row_editor.draft.url.clone(),
+                                first_row_hashtags: current_row_editor.draft.hashtags.clone(),
+                                first_row_comments: current_row_editor.draft.comments.clone(),
+                                first_row_secrets: current_row_editor.draft.secrets.clone(),
+                            },
+                        };
+
+                        row_editor.set(None);
+                        mutation_error.set(None);
+                        button_editor.set(Some(next_button_editor));
+                        return;
+                    }
+
+                    mutation_busy.set(true);
+                    mutation_error.set(None);
+                    spawn(async move {
+                        let result = move_row_server(
+                            ADMIN_AUTH(), source_button, original_name, destination, None,
+                        ).await;
+                        mutation_busy.set(false);
+                        match result {
+                            Ok(destination_name) => {
+                                row_editor.set(None);
+                                mutation_error.set(None);
+                                selected_button_name.set(Some(destination_name));
+                                status_message.set(Some("URL moved successfully.".to_string()));
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => mutation_error.set(Some(error.to_string())),
+                        }
+                    });
+                },
                 on_add_tag: move |tag: String| {
                     if let Some(mut current) = row_editor() {
                         current.draft.hashtags = add_tag_to_text(&current.draft.hashtags, &tag);
@@ -1403,8 +1611,27 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                         }
                     }
                 },
+                }
             }
         }
+    }
+}
+
+// Return the first free DIVIDER number for one button's current rows.
+fn next_divider_name(rows: &[ButtonRowView]) -> String {
+    let mut number = 1_u64;
+
+    loop {
+        let candidate = format!("DIVIDER{number}");
+        let already_used = rows
+            .iter()
+            .any(|row| row.name().eq_ignore_ascii_case(&candidate));
+
+        if !already_used {
+            return candidate;
+        }
+
+        number += 1;
     }
 }
 
@@ -1492,7 +1719,9 @@ fn TagManagerModal(
             class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
 
             div {
-                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
+                id: "tag_manager_modal",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
                 // Keep a visible close control on every modal.
@@ -1628,7 +1857,8 @@ fn ReorderConfirmationModal(
         div {
             class: "fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4",
             div {
-                class: "relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl bg-white p-6 shadow-2xl",
+                style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
                 button {
@@ -1695,6 +1925,7 @@ fn ButtonEditorModal(
     on_first_row_name_input: EventHandler<String>,
     on_first_row_url_input: EventHandler<String>,
     on_first_row_hashtags_input: EventHandler<String>,
+    on_first_row_comments_input: EventHandler<String>,
     on_add_first_row_tag: EventHandler<String>,
     available_tags: Vec<String>,
     on_first_row_secrets_input: EventHandler<String>,
@@ -1702,18 +1933,25 @@ fn ButtonEditorModal(
     on_clone: EventHandler<()>,
     on_delete: EventHandler<()>,
 ) -> Element {
-    let is_create = matches!(editor.mode, ButtonEditorMode::Create);
+    let is_create = matches!(
+        editor.mode,
+        ButtonEditorMode::Create | ButtonEditorMode::MoveToCreate { .. }
+    );
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+            // Keep the destination button modal above the row editor if Dioxus
+            // briefly renders both during a state transition.
+            class: "fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4",
 
             div {
+                id: "button_editor_modal",
                 // `relative` gives the close button a reliable anchor.
                 // `max-h-[90vh]` keeps the modal inside the viewport even when
                 // the browser is zoomed in heavily.
                 // `overflow-y-auto` gives the form its own scrollbar.
-                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
                 button {
@@ -1800,6 +2038,15 @@ fn ButtonEditorModal(
                                     }
                                 }
 
+                                label { class: "block md:col-span-2",
+                                    span { class: "mb-1 block text-sm font-medium text-gray-700", "Comments" }
+                                    textarea {
+                                        class: "w-full min-h-20 resize-y rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        value: editor.draft.first_row_comments.clone(),
+                                        oninput: move |event| on_first_row_comments_input.call(event.value()),
+                                    }
+                                }
+
                                 label { class: "block",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "Secrets" }
                                     input {
@@ -1870,6 +2117,9 @@ fn RowEditorModal(
     on_hashtags_input: EventHandler<String>,
     on_add_tag: EventHandler<String>,
     available_tags: Vec<String>,
+    available_buttons: Vec<String>,
+    source_is_only_row: bool,
+    on_move: EventHandler<(String, Option<String>)>,
     on_comments_input: EventHandler<String>,
     on_secrets_input: EventHandler<String>,
     on_save: EventHandler<()>,
@@ -1878,23 +2128,28 @@ fn RowEditorModal(
 ) -> Element {
     let is_create = editor.original_name.is_none();
     let is_link = editor.draft.kind == RowKind::Link;
+    let mut move_panel_open = use_signal(|| false);
+    // Default to creating a new button so opening the Move URL panel cannot
+    // silently target the first existing button. The user can still choose an
+    // existing destination from the dropdown.
+    let mut move_destination = use_signal(|| "__new_button__".to_string());
 
-    // The row editor is a second modal sitting above the URL-list modal.
-    // Keep keyboard focus inside this top-most modal so Tab cannot jump into
-    // controls belonging to the modal behind it.
+    // The Move URL panel click handler owns this copy because Dioxus move
+    // closures take ownership of captured String values.
+    let editor_button_name_for_move_panel = editor.button_name.clone();
+
+    // Put the cursor in the row-name field when this editor first appears.
+    // Tab handling itself is centralized in Navbar so every modal shares one
+    // focus trap and stacked dialogs cannot move focus twice.
     #[cfg(feature = "web")]
     {
         use wasm_bindgen::JsCast;
-        use wasm_bindgen::closure::Closure;
 
         use_effect(move || {
             let Some(window) = web_sys::window() else {
                 return;
             };
             let Some(document) = window.document() else {
-                return;
-            };
-            let Some(modal) = document.get_element_by_id("row_editor_modal") else {
                 return;
             };
 
@@ -1904,77 +2159,6 @@ fn RowEditorModal(
                     input.select();
                 }
             }
-
-            let document_for_handler = document.clone();
-            let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-                if event.key() != "Tab" {
-                    return;
-                }
-
-                let Some(modal) = document_for_handler.get_element_by_id("row_editor_modal") else {
-                    return;
-                };
-
-                let Some(active) = document_for_handler.active_element() else {
-                    return;
-                };
-
-                if !modal.contains(Some(&active)) {
-                    return;
-                }
-
-                let Ok(elements) = modal.query_selector_all(
-                    "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
-                ) else {
-                    return;
-                };
-
-                let mut focusable = Vec::<web_sys::HtmlElement>::new();
-                for index in 0..elements.length() {
-                    if let Some(node) = elements.item(index) {
-                        if let Ok(element) = node.dyn_into::<web_sys::HtmlElement>() {
-                            focusable.push(element);
-                        }
-                    }
-                }
-
-                if focusable.is_empty() {
-                    return;
-                }
-
-                let current_index = focusable
-                    .iter()
-                    .position(|element| element.is_same_node(Some(&active)))
-                    .unwrap_or(0);
-
-                event.prevent_default();
-
-                let next_index = if event.shift_key() {
-                    if current_index == 0 {
-                        focusable.len() - 1
-                    } else {
-                        current_index - 1
-                    }
-                } else {
-                    (current_index + 1) % focusable.len()
-                };
-
-                let _ = focusable[next_index].focus();
-            }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
-
-            let _ = document
-                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-
-            let window_for_cleanup = window.clone();
-            use dioxus::prelude::use_drop;
-            use_drop(move || {
-                if let Some(document) = window_for_cleanup.document() {
-                    let _ = document.remove_event_listener_with_callback(
-                        "keydown",
-                        closure.as_ref().unchecked_ref(),
-                    );
-                }
-            });
         });
     }
 
@@ -1989,7 +2173,8 @@ fn RowEditorModal(
                 // viewport at high zoom. `overflow-y-auto` creates the scrollbar
                 // on the modal itself rather than letting the page underneath
                 // become the scrolling container.
-                class: "relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
                 // Close button stays anchored to the upper-right of the editor.
@@ -2116,6 +2301,46 @@ fn RowEditorModal(
                     }
                 }
 
+                if move_panel_open() && !is_create && is_link {
+                    div { class: "mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4",
+                        h3 { class: "font-semibold text-indigo-950", "Move URL to another button" }
+                        p { class: "mt-1 text-xs text-indigo-800", "The URL, tags, comments, and secrets move together. The source button must keep at least one row." }
+                        label { class: "mt-3 block",
+                            span { class: "mb-1 block text-sm font-medium text-gray-700", "Destination button" }
+                            select {
+                                class: "w-full rounded-md border border-gray-300 bg-white px-3 py-2",
+                                value: move_destination(),
+                                disabled: busy,
+                                onchange: move |event| move_destination.set(event.value()),
+                                option { value: "__new_button__", "＋ Create a new button…" }
+                                for name in available_buttons.iter().filter(|name| **name != editor.button_name) {
+                                    option { value: name.clone(), "{name}" }
+                                }
+                            }
+                        }
+                        div { class: "mt-3 flex justify-end gap-2",
+                            button {
+                                class: "rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700",
+                                disabled: busy,
+                                onclick: move |_| move_panel_open.set(false),
+                                "Cancel"
+                            }
+                            button {
+                                class: "rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50",
+                                disabled: busy,
+                                onclick: move |_| {
+                                    if move_destination() == "__new_button__" {
+                                        on_move.call(("".to_string(), Some(String::new())));
+                                    } else {
+                                        on_move.call((move_destination(), None));
+                                    }
+                                },
+                                "Move URL"
+                            }
+                        }
+                    }
+                }
+
                 if let Some(message) = error_message {
                     div { class: "mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700", "{message}" }
                 }
@@ -2129,6 +2354,28 @@ fn RowEditorModal(
                                 title: "Clone this row immediately after the original with a unique -1, -2, -3... name.",
                                 onclick: move |_| on_clone.call(()),
                                 "Clone Row"
+                            }
+
+                            if is_link {
+                                button {
+                                    class: "rounded-md border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60",
+                                    disabled: busy,
+                                    title: "Move this URL to another button, or create a new button for it.",
+                                    onclick: move |_| {
+                                        if source_is_only_row {
+                                            // There is nowhere safe to move the only row
+                                            // without leaving an empty source button. The
+                                            // parent opens Edit Button so this can be renamed.
+                                            on_move.call(("".to_string(), Some(String::new())));
+                                            return;
+                                        }
+                                        move_panel_open.set(!move_panel_open());
+                                        // Keep the current destination selection. The initial
+                                        // selection is "Create a new button…"; do not replace it
+                                        // with the first existing button when opening the panel.
+                                    },
+                                    "Move URL"
+                                }
                             }
 
                             button {
@@ -2351,6 +2598,29 @@ async fn clone_row_server(
 }
 
 #[server]
+async fn move_row_server(
+    credentials: AdminCredentials,
+    source_button: String,
+    row_name: String,
+    destination_button: String,
+    new_button_name: Option<String>,
+) -> Result<String, ServerFnError> {
+    crate::dashboard_data::move_row(
+        std::path::Path::new(crate::dashboard_data::BUTTONS_V3_FILE),
+        &credentials,
+        &source_button,
+        &row_name,
+        &destination_button,
+        new_button_name.as_deref(),
+    )
+    .map_err(|error| ServerFnError::ServerError {
+        message: error.to_string(),
+        code: 500,
+        details: None,
+    })
+}
+
+#[server]
 async fn delete_row_server(
     credentials: AdminCredentials,
     button_name: String,
@@ -2456,4 +2726,3 @@ async fn set_autosort_server(
         }
     })
 }
-
