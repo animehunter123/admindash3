@@ -560,15 +560,34 @@ fn App() -> Element {
     });
 
     // -------------------------------------------------------------------------
-    // NAVBAR
+    // NAVBAR (SAFE REFRESH + LAST-KNOWN-GOOD CACHE)
     // -------------------------------------------------------------------------
     //
-    // Navbar loading is independent of the dashboard refresh mechanism.
-    //
-    // Therefore the existing .unwrap() behavior is retained here.
+    // `use_server_future()` can temporarily return `Err(Suspended(...))` while
+    // DASHBOARD_REFRESH_KEY changes. Never unwrap that result: creating a
+    // button, saving the navbar, or restoring a snapshot can all trigger it.
+    // Keep the last successful navbar visible while the new request is running,
+    // just as we do for the dashboard payload above.
     // -------------------------------------------------------------------------
 
-    let navbar = use_server_future(|| async { load_navbar().await }).unwrap();
+    let navbar = use_server_future(|| {
+        // Read this outside the async block so a restore/save triggers a reload.
+        let _refresh_key = DASHBOARD_REFRESH_KEY();
+        async { load_navbar().await }
+    });
+
+    let mut cached_navbar = use_signal(|| None::<Vec<NavItem>>);
+    let navbar_for_effect = navbar.clone();
+    use_effect(move || {
+        let Ok(navbar_resource) = &navbar_for_effect else {
+            // The request is suspended during refresh. Preserve the old navbar.
+            return;
+        };
+
+        if let Some(Ok(items)) = navbar_resource() {
+            cached_navbar.set(Some(items.clone()));
+        }
+    });
 
     // -------------------------------------------------------------------------
     // RENDER
@@ -605,10 +624,31 @@ fn App() -> Element {
             // -----------------------------------------------------------------
             // NAVBAR
             // -----------------------------------------------------------------
-            if let Some(Ok(items)) = navbar() {
+            if let Some(items) = cached_navbar() {
                 Navbar {
+                    // Remount Navbar when the refresh key changes so its local
+                    // editing draft starts from the restored/saved tree too.
+                    key: "navbar-{navbar_items_key(&items)}",
                     items: items.clone(),
                     dashboard: cached_dashboard(),
+                }
+            } else {
+                // Initial load only: don't panic or hide the rest of the page
+                // while the first navbar request is suspended/in flight.
+                match &navbar {
+                    Ok(navbar_resource) => {
+                        match &*navbar_resource.read_unchecked() {
+                            Some(Ok(items)) => rsx! {
+                                Navbar {
+                                    key: "navbar-initial-{navbar_items_key(&items)}",
+                                    items: items.clone(),
+                                    dashboard: cached_dashboard(),
+                                }
+                            },
+                            Some(Err(_)) | None => rsx! { },
+                        }
+                    },
+                    Err(_) => rsx! { },
                 }
             }
 
@@ -771,26 +811,194 @@ fn ErrorPanel(message: String) -> Element {
     }
 }
 
+// Create a stable component key from the actual navbar tree. This ensures a
+// restored snapshot remounts Navbar *after* the new JSON has arrived, rather
+// than remounting too early with the previous cached tree.
+fn navbar_items_key(items: &[NavItem]) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let serialized = serde_json::to_string(items).unwrap_or_default();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serialized.hash(&mut hasher);
+    hasher.finish()
+}
+
 // -----------------------------------------------------------------------------
 // LOAD NAVBAR JSON
 // -----------------------------------------------------------------------------
 #[server]
 async fn load_navbar() -> Result<Vec<NavItem>, ServerFnError> {
-    let source_json_file = "./data_navbar.json";
+    let source_json_file = crate::data_navbar::NAVBAR_FILE;
 
     // -------------------------------------------------------------------------
     // Read JSON from disk on the server.
     // -------------------------------------------------------------------------
-    let fsdata =
-        std::fs::read_to_string(source_json_file).expect("couldn't read file data_navbar.json");
+    let fsdata = std::fs::read_to_string(source_json_file)
+        .unwrap_or_else(|error| panic!("couldn't read file {}: {error}", source_json_file));
 
     // -------------------------------------------------------------------------
     // Convert JSON into our navbar structs.
     // -------------------------------------------------------------------------
-    let items: Vec<NavItem> =
-        serde_json::from_str(&fsdata).expect("couldn't deserialize data_navbar.json");
+    let items: Vec<NavItem> = serde_json::from_str(&fsdata)
+        .unwrap_or_else(|error| panic!("couldn't deserialize {}: {error}", source_json_file));
 
+    crate::data_navbar::validate_nav_items(&items).map_err(|message| {
+        ServerFnError::ServerError {
+            message,
+            code: 400,
+            details: None,
+        }
+    })?;
     Ok(items)
+}
+
+// -----------------------------------------------------------------------------
+// SAVE NAVBAR JSON (ADMIN ONLY)
+// -----------------------------------------------------------------------------
+#[server]
+pub(crate) async fn save_navbar(
+    items: Vec<NavItem>,
+    credentials: AdminCredentials,
+) -> Result<(), ServerFnError> {
+    if !credentials.is_admin() {
+        return Err(ServerFnError::ServerError {
+            message: "Administrator login is required to change the navbar.".to_string(),
+            code: 401,
+            details: None,
+        });
+    }
+    crate::data_navbar::validate_nav_items(&items).map_err(|message| {
+        ServerFnError::ServerError {
+            message,
+            code: 400,
+            details: None,
+        }
+    })?;
+
+    let json =
+        serde_json::to_string_pretty(&items).map_err(|error| ServerFnError::ServerError {
+            message: format!("Could not serialize navbar JSON: {error}"),
+            code: 500,
+            details: None,
+        })?;
+    let path = std::path::Path::new(crate::data_navbar::NAVBAR_FILE);
+
+    // Capture a complete restore folder BEFORE changing navbar JSON. The folder
+    // contains all top-level JSON files plus both history directories, matching
+    // the structure produced by Export ZIP.
+    crate::dashboard_data::backup_all_json_files().map_err(|error| ServerFnError::ServerError {
+        message: format!("Could not create full backup before navbar change: {error}"),
+        code: 500,
+        details: None,
+    })?;
+
+    // Keep a navbar-specific history before overwriting the live file. These
+    // snapshots are separate from history/buttonboard because that directory is
+    // reserved for Buttonboard's existing minidiff/revert format.
+    if path.exists() {
+        let history_dir = std::path::Path::new("./history/navbar");
+        std::fs::create_dir_all(history_dir).map_err(|error| ServerFnError::ServerError {
+            message: format!("Could not create navbar history directory: {error}"),
+            code: 500,
+            details: None,
+        })?;
+        let filename = crate::dashboard_data::make_history_filename()
+            .map_err(|error| ServerFnError::ServerError {
+                message: format!("Could not create navbar history filename: {error}"),
+                code: 500,
+                details: None,
+            })?
+            .replacen("dashboard-", "navbar-", 1);
+        let snapshot_path = history_dir.join(&filename);
+        std::fs::copy(path, &snapshot_path).map_err(|error| ServerFnError::ServerError {
+            message: format!("Could not back up current navbar JSON: {error}"),
+            code: 500,
+            details: None,
+        })?;
+
+        // Store a compact line-based minidiff next to the snapshot. The JSON
+        // snapshot remains the source of truth for recovery; the .diff file is
+        // a readable preview of the change that was just saved.
+        let previous_json = std::fs::read_to_string(path).unwrap_or_default();
+        let old_lines: Vec<&str> = previous_json.lines().collect();
+        let new_lines: Vec<&str> = json.lines().collect();
+        let mut prefix = 0usize;
+        while prefix < old_lines.len().min(new_lines.len())
+            && old_lines[prefix] == new_lines[prefix]
+        {
+            prefix += 1;
+        }
+        let mut suffix = 0usize;
+        while suffix
+            < old_lines
+                .len()
+                .saturating_sub(prefix)
+                .min(new_lines.len().saturating_sub(prefix))
+            && old_lines[old_lines.len() - 1 - suffix] == new_lines[new_lines.len() - 1 - suffix]
+        {
+            suffix += 1;
+        }
+        let mut diff = String::from("Navbar change preview (context omitted):\n");
+        for line in old_lines
+            .iter()
+            .skip(prefix)
+            .take(old_lines.len().saturating_sub(prefix + suffix))
+        {
+            diff.push_str("- ");
+            diff.push_str(line);
+            diff.push('\n');
+        }
+        for line in new_lines
+            .iter()
+            .skip(prefix)
+            .take(new_lines.len().saturating_sub(prefix + suffix))
+        {
+            diff.push_str("+ ");
+            diff.push_str(line);
+            diff.push('\n');
+        }
+        let diff_path = snapshot_path.with_extension("diff");
+        std::fs::write(diff_path, diff).map_err(|error| ServerFnError::ServerError {
+            message: format!("Could not write navbar minidiff preview: {error}"),
+            code: 500,
+            details: None,
+        })?;
+
+        // Retain only the newest 100 navbar snapshots and their matching diffs.
+        let mut snapshots: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(history_dir)
+            .map_err(|error| ServerFnError::ServerError {
+                message: format!("Could not list navbar history: {error}"),
+                code: 500,
+                details: None,
+            })?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                (path.is_file() && name.starts_with("navbar-") && name.ends_with(".json"))
+                    .then_some((name, path))
+            })
+            .collect();
+        snapshots.sort_by(|a, b| a.0.cmp(&b.0));
+        for (_, old_path) in snapshots.into_iter().rev().skip(100) {
+            let diff_path = old_path.with_extension("diff");
+            let _ = std::fs::remove_file(diff_path);
+            let _ = std::fs::remove_file(old_path);
+        }
+    }
+    // Write the live file in place (same pattern as data_buttons.v3.json).
+    //
+    // Do NOT use write-temp + rename here: Docker Compose often bind-mounts a
+    // single host file onto `data_navbar.v2.json`. On Linux, renaming over a
+    // bind-mounted file returns EBUSY ("Device or resource busy"). In-place
+    // `write` updates the same inode and works both in Docker and on a normal
+    // filesystem. Local `dx serve` is unaffected.
+    std::fs::write(path, format!("{json}\n")).map_err(|error| ServerFnError::ServerError {
+        message: format!("Could not write navbar JSON: {error}"),
+        code: 500,
+        details: None,
+    })?;
+    Ok(())
 }
 
 // -----------------------------------------------------------------------------

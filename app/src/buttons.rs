@@ -146,6 +146,7 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
     let mut dragging_button_name = use_signal(|| None::<String>);
     let mut reorder_confirmation = use_signal(|| None::<ReorderConfirmation>);
     let mut status_message = use_signal(|| None::<String>);
+    let mut admin_help_open = use_signal(|| false);
 
     // Auto-sort is a system-wide server setting. The DashboardPayload already
     // contains it, so SSR can render the correct order immediately on F5.
@@ -358,15 +359,51 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                                     class: "text-lg font-semibold tracking-tight text-blue-950",
                                     "Admin Usage"
                                 }
-                                p {
-                                    class: "mt-1 max-w-3xl text-sm leading-6 text-blue-800",
-                                    "You are in edit mode. Use the five controls below to manage the dashboard. Changes are saved immediately. Export ZIP creates a server-side backup of the JSON files and dashboard history."
+                                button {
+                                    class: "mt-1 text-left text-sm font-medium text-blue-700 hover:text-blue-900",
+                                    onclick: move |_| admin_help_open.set(!admin_help_open()),
+                                    if admin_help_open() { "Hide admin instructions ▲" } else { "Show admin instructions ▼" }
+                                }
+                                if admin_help_open() {
+                                    div { class: "mt-3 max-w-4xl space-y-3 rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-blue-950",
+                                        p { class: "font-semibold", "THIS IS THE ADMIN DASHBOARD (NEW IMPLEMENTATION IM WORKING ON TO ADD MORE USAGE FOR THE LM TEAM BASED ON THE ORIGINAL PYTHON FLASK APP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" }
+                                        p { class: "font-semibold", "Important: changes save immediately. Be careful when editing or deleting items." }
+                                        p { "Buttonboard and the navbar are two separate parts of the dashboard. Use the Buttonboard controls to organize the main buttons and their URL rows; use Manage Navbar to edit the top navigation links and nested submenus." }
+                                        div {
+                                            p { class: "font-semibold", "Buttonboard: add, edit, move, or remove" }
+                                            ul { class: "ml-5 list-disc space-y-1",
+                                                li { "Use +Button to create a main button and its first URL row. Give it a clear, unique name." }
+                                                li { "Use the edit controls on a button or URL row to change names, URLs, tags, comments, or other row details. Use Clone when you want a copy before making changes." }
+                                                li { "Use Move to place a URL row under another button or create a new button for it. Check the destination carefully before confirming." }
+                                                li { "Delete removes the selected item; deleting a button can remove its rows too. Double-check the selected item before confirming any deletion." }
+                                            }
+                                        }
+                                        div {
+                                            p { class: "font-semibold", "Navbar: add, edit, remove, or nest links" }
+                                            ul { class: "ml-5 list-disc space-y-1",
+                                                li { "Open Manage Navbar in the navbar admin controls. Add a top-level item or add a child under an existing item to create a submenu." }
+                                                li { "Use Edit to change a label or URL. Use Move to change its parent or order, and Clone to make a copy." }
+                                                li { "Delete removes that item and its nested children. The fixed Admindash3 brand item is intentionally not editable or movable from the manager." }
+                                                li { "A dropdown heading can also retain a URL: when nesting under a link that already has a URL, the editor preserves that destination as a child so it is not lost." }
+                                            }
+                                        }
+                                        div {
+                                            p { class: "font-semibold", "What the admin controls do" }
+                                            ul { class: "ml-5 list-disc space-y-1",
+                                                li { "Autosort controls whether Buttonboard items are saved in alphabetical order. When enabled, manual drag ordering is not available." }
+                                                li { "Tags lets you manage the available tags; JSON Check validates the dashboard data; History opens Dashboard History, where you can review and restore Buttonboard or navbar snapshots." }
+                                                li { "Export ZIP downloads a backup archive containing the current JSON files and both history folders (history/buttonboard and history/navbar). It uses the same folder layout as the automatic full backups." }
+                                                li { "Automatic full backups are created before changes and kept in timestamped folders under backups/dashboard. Dashboard History also keeps individual snapshots so you can revert a specific edit." }
+                                            }
+                                        }
+                                        p { class: "rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900", "Safety tip: before a large cleanup or a series of moves, use Export ZIP. After each change, check the result in the dashboard. If something goes wrong, open History and restore the appropriate snapshot. A restore itself creates a new backup, so you can undo the restore too." }
+                                    }
                                 }
                             }
 
                             button {
                                 class: "shrink-0 rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Download a ZIP containing the dashboard JSON files and dashboard_history folder.",
+                                title: "Download the current JSON files and both history folders in a timestamp-ready backup layout.",
                                 disabled: mutation_busy(),
                                 onclick: move |_| async move {
                                     mutation_error.set(None);
@@ -703,13 +740,13 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                 let button_name = button.name.clone();
                 rsx! {
                     div {
-                        class: "fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4",
+                        class: "fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
                         onclick: move |_| {
                             selected_button_name.set(None);
                         },
 
                         div {
-                            class: "modal-window relative max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                            class: "modal-window relative max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
                             style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                             onclick: move |event| {
                                 event.stop_propagation();
@@ -1698,6 +1735,81 @@ fn tag_usage_count(counts: &[(String, usize)], tag: &str) -> usize {
 }
 
 // -----------------------------------------------------------------------------
+// MODAL AUTOFOCUS HELPER
+// -----------------------------------------------------------------------------
+// Browser `autofocus` attributes can lose a race against Dioxus rendering and
+// the shared keyboard focus trap. After a modal mounts, this helper focuses
+// its first visible form field. If the dialog has no fields (for example, a
+// delete confirmation), it focuses the first useful button instead of the
+// red X close control.
+#[cfg(feature = "web")]
+fn focus_first_modal_control(modal_id: &'static str) {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
+
+    let Some(window) = web_sys::window() else { return; };
+    let callback = Closure::once(Box::new(move || {
+        let Some(window) = web_sys::window() else { return; };
+        let Some(document) = window.document() else { return; };
+        let Some(modal) = document.get_element_by_id(modal_id) else { return; };
+
+        // Do not steal focus from a field/button the user is already using.
+        // The exception is the close X, which should never be the initial tab stop.
+        if let Some(active) = document.active_element() {
+            if modal.contains(Some(&active)) {
+                let tag = active.tag_name().to_ascii_lowercase();
+                let text = active.text_content().unwrap_or_default();
+                let is_close = matches!(text.trim(), "×" | "✕" | "✖" | "X" | "x")
+                    || active.get_attribute("aria-label").as_deref() == Some("Close")
+                    || active.get_attribute("title").as_deref() == Some("Close");
+                if !is_close && matches!(tag.as_str(), "input" | "textarea" | "select") {
+                    return;
+                }
+                if !is_close && tag == "button" {
+                    return;
+                }
+            }
+        }
+
+        // Prefer a visible input, textarea, or select regardless of where the
+        // close button appears in DOM order.
+        if let Ok(fields) = modal.query_selector_all(
+            "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled])"
+        ) {
+            for index in 0..fields.length() {
+                let Some(node) = fields.item(index) else { continue; };
+                let Ok(field) = node.dyn_into::<web_sys::HtmlElement>() else { continue; };
+                if field.offset_width() > 0 || field.offset_height() > 0 {
+                    let _ = field.focus();
+                    return;
+                }
+            }
+        }
+
+        // Confirmations and other field-less dialogs get a sensible button.
+        if let Ok(buttons) = modal.query_selector_all("button:not([disabled])") {
+            for index in 0..buttons.length() {
+                let Some(node) = buttons.item(index) else { continue; };
+                let Ok(button) = node.dyn_into::<web_sys::HtmlElement>() else { continue; };
+                let text = button.text_content().unwrap_or_default();
+                let is_close = matches!(text.trim(), "×" | "✕" | "✖" | "X" | "x")
+                    || button.get_attribute("aria-label").as_deref() == Some("Close")
+                    || button.get_attribute("title").as_deref() == Some("Close");
+                if !is_close && (button.offset_width() > 0 || button.offset_height() > 0) {
+                    let _ = button.focus();
+                    return;
+                }
+            }
+        }
+    }) as Box<dyn FnOnce()>);
+
+    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+        callback.as_ref().unchecked_ref(), 0,
+    );
+    callback.forget();
+}
+
+// -----------------------------------------------------------------------------
 // TAG MANAGER MODAL
 // -----------------------------------------------------------------------------
 
@@ -1714,13 +1826,16 @@ fn TagManagerModal(
     on_remove: EventHandler<String>,
     on_save: EventHandler<()>,
 ) -> Element {
+    #[cfg(feature = "web")]
+    use_effect(move || focus_first_modal_control("tag_manager_modal"));
+
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+            class: "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "tag_manager_modal",
-                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
                 style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
@@ -1827,6 +1942,9 @@ fn ReorderConfirmationModal(
     on_cancel: EventHandler<()>,
     on_confirm: EventHandler<()>,
 ) -> Element {
+    #[cfg(feature = "web")]
+    use_effect(move || focus_first_modal_control("reorder_confirmation_modal"));
+
     let (title, message) = match &confirmation {
         ReorderConfirmation::Button {
             source_name,
@@ -1857,7 +1975,8 @@ fn ReorderConfirmationModal(
         div {
             class: "fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4",
             div {
-                class: "modal-window relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl bg-white p-6 shadow-2xl",
+                id: "reorder_confirmation_modal",
+                class: "modal-window relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl bg-white p-4 sm:p-6 shadow-2xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
                 style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
@@ -1937,12 +2056,18 @@ fn ButtonEditorModal(
         editor.mode,
         ButtonEditorMode::Create | ButtonEditorMode::MoveToCreate { .. }
     );
+    // Use the same in-app modal style as the rest of the dashboard instead
+    // of the browser's native confirm() dialog.
+    let mut delete_confirmation_open = use_signal(|| false);
+
+    #[cfg(feature = "web")]
+    use_effect(move || focus_first_modal_control("button_editor_modal"));
 
     rsx! {
         div {
             // Keep the destination button modal above the row editor if Dioxus
             // briefly renders both during a state transition.
-            class: "fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4",
+            class: "fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "button_editor_modal",
@@ -1950,7 +2075,7 @@ fn ButtonEditorModal(
                 // `max-h-[90vh]` keeps the modal inside the viewport even when
                 // the browser is zoomed in heavily.
                 // `overflow-y-auto` gives the form its own scrollbar.
-                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
                 style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
@@ -1979,40 +2104,46 @@ fn ButtonEditorModal(
                     label { class: "block",
                         span { class: "mb-1 block text-sm font-medium text-gray-700", "Button name" }
                         input {
-                            class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                            autofocus: true,
+                            class: if editor.draft.name.trim().is_empty() { "block box-border min-w-0 max-w-full w-full rounded-md border-2 border-red-500 bg-red-50 px-3 py-2 text-red-700 placeholder-red-400 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20" } else { "block box-border min-w-0 max-w-full w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" },
+                            required: true,
                             value: editor.draft.name.clone(),
                             oninput: move |event| on_name_input.call(event.value()),
                         }
                     }
 
                     if is_create {
-                        div { class: "rounded-md border border-gray-200 bg-gray-50 p-4",
+                        // Keep the panel decoration outside the shared field alignment.
+                        div { class: "-mx-4 rounded-md bg-gray-50 px-4 py-4 ring-1 ring-inset ring-gray-200",
                             h3 { class: "text-sm font-semibold text-gray-800", "First Row" }
 
-                            div { class: "mt-3 grid gap-3 md:grid-cols-2",
-                                label { class: "block",
+                            div { class: "mt-3 grid min-w-0 grid-cols-1 gap-4",
+                                label { class: "block w-full min-w-0",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "Row name" }
                                     input {
-                                        class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        class: if editor.draft.first_row_name.trim().is_empty() { "block box-border min-w-0 max-w-full w-full rounded-md border-2 border-red-500 bg-red-50 px-3 py-2 text-red-700 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20" } else { "block box-border min-w-0 max-w-full w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" },
+                                        required: true,
                                         value: editor.draft.first_row_name.clone(),
                                         oninput: move |event| on_first_row_name_input.call(event.value()),
                                     }
                                 }
 
-                                label { class: "block md:col-span-2",
+                                label { class: "block w-full min-w-0",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "URL" }
                                     input {
-                                        class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        class: if editor.draft.first_row_url.trim().is_empty() { "block box-border min-w-0 max-w-full w-full rounded-md border-2 border-red-500 bg-red-50 px-3 py-2 text-red-700 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20" } else { "block box-border min-w-0 max-w-full w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" },
+                                        required: true,
                                         value: editor.draft.first_row_url.clone(),
                                         oninput: move |event| on_first_row_url_input.call(event.value()),
                                     }
                                 }
 
-                                label { class: "block",
+                                label { class: "block w-full min-w-0",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "Hashtags" }
                                     input {
-                                        class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        class: "block box-border min-w-0 max-w-full w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
                                         list: "available-tags-first-row",
+                                        placeholder: "#hash1 #hashtag2",
                                         value: editor.draft.first_row_hashtags.clone(),
                                         oninput: move |event| on_first_row_hashtags_input.call(event.value()),
                                     }
@@ -2024,7 +2155,7 @@ fn ButtonEditorModal(
                                 }
 
                                 if !available_tags.is_empty() {
-                                    div { class: "md:col-span-2 flex flex-wrap gap-2",
+                                    div { class: "flex flex-wrap gap-2",
                                         span { class: "w-full text-xs text-gray-500", "Available tags — click to add:" }
                                         for tag in available_tags.iter() {
                                             button {
@@ -2038,19 +2169,21 @@ fn ButtonEditorModal(
                                     }
                                 }
 
-                                label { class: "block md:col-span-2",
+                                label { class: "block w-full min-w-0",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "Comments" }
                                     textarea {
-                                        class: "w-full min-h-20 resize-y rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        class: "block box-border min-w-0 max-w-full w-full min-h-20 resize-y rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        placeholder: "Optional notes about this URL...",
                                         value: editor.draft.first_row_comments.clone(),
                                         oninput: move |event| on_first_row_comments_input.call(event.value()),
                                     }
                                 }
 
-                                label { class: "block",
+                                label { class: "block w-full min-w-0",
                                     span { class: "mb-1 block text-sm font-medium text-gray-700", "Secrets" }
                                     input {
-                                        class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        class: "block box-border min-w-0 max-w-full w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                        placeholder: "e.g. username, password, access token...",
                                         value: editor.draft.first_row_secrets.clone(),
                                         oninput: move |event| on_first_row_secrets_input.call(event.value()),
                                     }
@@ -2078,7 +2211,7 @@ fn ButtonEditorModal(
                             button {
                                 class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
                                 disabled: busy,
-                                onclick: move |_| on_delete.call(()),
+                                onclick: move |_| delete_confirmation_open.set(true),
                                 "Delete Button"
                             }
                         }
@@ -2094,11 +2227,24 @@ fn ButtonEditorModal(
 
                         button {
                             class: "rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60",
-                            disabled: busy,
+                            disabled: busy || editor.draft.name.trim().is_empty() || (is_create && (editor.draft.first_row_name.trim().is_empty() || editor.draft.first_row_url.trim().is_empty())),
                             onclick: move |_| on_save.call(()),
                             if busy { "Saving..." } else if is_create { "Create Button" } else { "Save Changes" }
                         }
                     }
+                }
+            }
+
+            if delete_confirmation_open() {
+                ConfirmActionModal {
+                    title: "Delete Button?".to_string(),
+                    message: "Are you sure you want to delete this button and all of its URL rows? This cannot be undone.".to_string(),
+                    confirm_label: "Delete Button".to_string(),
+                    on_cancel: move |_| delete_confirmation_open.set(false),
+                    on_confirm: move |_| {
+                        delete_confirmation_open.set(false);
+                        on_delete.call(());
+                    },
                 }
             }
         }
@@ -2129,6 +2275,7 @@ fn RowEditorModal(
     let is_create = editor.original_name.is_none();
     let is_link = editor.draft.kind == RowKind::Link;
     let mut move_panel_open = use_signal(|| false);
+    let mut delete_confirmation_open = use_signal(|| false);
     // Default to creating a new button so opening the Move URL panel cannot
     // silently target the first existing button. The user can still choose an
     // existing destination from the dropdown.
@@ -2142,29 +2289,11 @@ fn RowEditorModal(
     // Tab handling itself is centralized in Navbar so every modal shares one
     // focus trap and stacked dialogs cannot move focus twice.
     #[cfg(feature = "web")]
-    {
-        use wasm_bindgen::JsCast;
-
-        use_effect(move || {
-            let Some(window) = web_sys::window() else {
-                return;
-            };
-            let Some(document) = window.document() else {
-                return;
-            };
-
-            if let Some(element) = document.get_element_by_id("row_editor_name") {
-                if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
-                    let _ = input.focus();
-                    input.select();
-                }
-            }
-        });
-    }
+    use_effect(move || focus_first_modal_control("row_editor_modal"));
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+            class: "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "row_editor_modal",
@@ -2173,7 +2302,7 @@ fn RowEditorModal(
                 // viewport at high zoom. `overflow-y-auto` creates the scrollbar
                 // on the modal itself rather than letting the page underneath
                 // become the scrolling container.
-                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-6 shadow-xl",
+                class: "modal-window relative max-h-[90vh] w-full max-w-xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
                 style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
                 onclick: move |event| event.stop_propagation(),
 
@@ -2227,31 +2356,36 @@ fn RowEditorModal(
                         span { class: "mb-1 block text-sm font-medium text-gray-700", "Row name" }
                         input {
                             id: "row_editor_name",
-                            class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                            autofocus: true,
+                            class: if editor.draft.name.trim().is_empty() { "w-full rounded-md border-2 border-red-500 bg-red-50 px-3 py-2 text-red-700 placeholder-red-400 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20" } else { "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" },
+                            required: true,
                             value: editor.draft.name.clone(),
                             oninput: move |event| on_name_input.call(event.value()),
                         }
                     }
 
                     if is_link {
-                        div { class: "grid gap-3 md:grid-cols-2",
-                            label { class: "block md:col-span-2",
+                        div { class: "grid min-w-0 grid-cols-1 gap-3",
+                            label { class: "block w-full min-w-0 md:col-span-2",
                                 span { class: "mb-1 block text-sm font-medium text-gray-700", "URL" }
                                 input {
-                                    class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                    class: if editor.draft.url.trim().is_empty() { "w-full rounded-md border-2 border-red-500 bg-red-50 px-3 py-2 text-red-700 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20" } else { "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" },
+                                    required: true,
                                     value: editor.draft.url.clone(),
                                     oninput: move |event| on_url_input.call(event.value()),
                                 }
                             }
 
-                            label { class: "block",
+                            label { class: "block w-full min-w-0",
                                 span { class: "mb-1 block text-sm font-medium text-gray-700", "Hashtags" }
                                 input {
                                     class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
                                     list: "available-tags-row",
                                     value: editor.draft.hashtags.clone(),
+                                    placeholder: "#hash1 #hashtag2",
                                     oninput: move |event| on_hashtags_input.call(event.value()),
                                 }
+                                p { class: "mt-1 text-xs text-gray-500", "Enter multiple tags separated by spaces. Each tag must start with #, e.g. #hash1 #hashtag2." }
                                 datalist { id: "available-tags-row",
                                     for tag in available_tags.iter() {
                                         option { value: tag.clone() }
@@ -2259,7 +2393,7 @@ fn RowEditorModal(
                                 }
                             }
 
-                            label { class: "block md:col-span-2",
+                            label { class: "block w-full min-w-0 md:col-span-2",
                                 span { class: "mb-1 block text-sm font-medium text-gray-700", "Comments" }
                                 textarea {
                                     class: "w-full min-h-28 resize-y rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
@@ -2285,10 +2419,11 @@ fn RowEditorModal(
                                 }
                             }
 
-                            label { class: "block",
+                            label { class: "block w-full min-w-0",
                                 span { class: "mb-1 block text-sm font-medium text-gray-700", "Secrets" }
                                 input {
                                     class: "w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+                                    placeholder: "e.g. username, password, access token...",
                                     value: editor.draft.secrets.clone(),
                                     oninput: move |event| on_secrets_input.call(event.value()),
                                 }
@@ -2381,7 +2516,7 @@ fn RowEditorModal(
                             button {
                                 class: "rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
                                 disabled: busy,
-                                onclick: move |_| on_delete.call(()),
+                                onclick: move |_| delete_confirmation_open.set(true),
                                 "Delete Row"
                             }
                         }
@@ -2397,10 +2532,66 @@ fn RowEditorModal(
 
                         button {
                             class: "rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60",
-                            disabled: busy,
+                            disabled: busy || editor.draft.name.trim().is_empty() || (is_link && editor.draft.url.trim().is_empty()),
                             onclick: move |_| on_save.call(()),
                             if busy { "Saving..." } else if is_create { "Create Row" } else { "Save Changes" }
                         }
+                    }
+                }
+            }
+
+            if delete_confirmation_open() {
+                ConfirmActionModal {
+                    title: "Delete URL Row?".to_string(),
+                    message: "Are you sure you want to delete this URL row? This cannot be undone.".to_string(),
+                    confirm_label: "Delete Row".to_string(),
+                    on_cancel: move |_| delete_confirmation_open.set(false),
+                    on_confirm: move |_| {
+                        delete_confirmation_open.set(false);
+                        on_delete.call(());
+                    },
+                }
+            }
+        }
+    }
+}
+
+// Shared dashboard-styled confirmation modal for destructive Buttonboard actions.
+#[component]
+fn ConfirmActionModal(
+    title: String,
+    message: String,
+    confirm_label: String,
+    on_cancel: EventHandler<()>,
+    on_confirm: EventHandler<()>,
+) -> Element {
+    #[cfg(feature = "web")]
+    use_effect(move || focus_first_modal_control("confirm_action_modal"));
+
+    rsx! {
+        div {
+            class: "fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4",
+            role: "presentation",
+            onclick: move |_| on_cancel.call(()),
+            div {
+                id: "confirm_action_modal",
+                class: "modal-window w-full max-w-md rounded-lg bg-white p-6 shadow-2xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: "{title}",
+                onclick: move |event| event.stop_propagation(),
+                h2 { class: "text-lg font-semibold text-gray-900", "{title}" }
+                p { class: "mt-2 text-sm leading-6 text-gray-600", "{message}" }
+                div { class: "mt-6 flex justify-end gap-3",
+                    button {
+                        class: "rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50",
+                        onclick: move |_| on_cancel.call(()),
+                        "Cancel"
+                    }
+                    button {
+                        class: "rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700",
+                        onclick: move |_| on_confirm.call(()),
+                        "{confirm_label}"
                     }
                 }
             }
@@ -2726,3 +2917,4 @@ async fn set_autosort_server(
         }
     })
 }
+

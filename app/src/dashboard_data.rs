@@ -20,8 +20,9 @@ pub const BUTTONS_V1_FILE: &str = "./data_buttons.json";
 pub const BUTTONS_V3_FILE: &str = "./data_buttons.v3.json";
 pub const TAGS_FILE: &str = "./data_tags.json";
 pub const SYSTEM_PREFERENCES_FILE: &str = "./system_preferences.json";
-pub const HISTORY_DIR: &str = "./dashboard_history";
-pub const FULL_BACKUP_DIR: &str = "./dashboard_backups";
+pub const HISTORY_DIR: &str = "./history/buttonboard";
+pub const FULL_BACKUP_DIR: &str = "./backups/dashboard";
+pub const NAVBAR_HISTORY_DIR: &str = "./history/navbar";
 pub const MAX_HISTORY_SNAPSHOTS: usize = 100;
 pub const MAX_FULL_BACKUPS: usize = 30;
 
@@ -38,6 +39,7 @@ pub const MAX_FULL_BACKUPS: usize = 30;
 #[cfg(not(target_arch = "wasm32"))]
 pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, String)> {
     ensure_admin(credentials)?;
+    migrate_legacy_history_directories()?;
 
     let mut archive = ZipWriter::new(Cursor::new(Vec::<u8>::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -75,17 +77,17 @@ pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, 
     }
 
     // -------------------------------------------------------------------------
-    // dashboard_history
+    // history/buttonboard
     // -------------------------------------------------------------------------
     //
     // Walk this directory separately. Every file keeps its path underneath
-    // dashboard_history/, so a snapshot such as:
+    // history/buttonboard/, so a snapshot such as:
     //
-    //     ./dashboard_history/dashboard-2026-10-07....json
+    //     ./history/buttonboard/dashboard-2026-10-07....json
     //
     // becomes:
     //
-    //     dashboard_history/dashboard-2026-10-07....json
+    //     history/buttonboard/dashboard-2026-10-07....json
     //
     // We deliberately include ALL files in this directory, not only JSON, so
     // the export remains a faithful backup if another history file type is
@@ -94,10 +96,28 @@ pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, 
     let history_path = Path::new(HISTORY_DIR);
 
     if history_path.is_dir() {
+        archive
+            .add_directory("history/buttonboard/", options.clone())
+            .context("Could not add the Buttonboard history folder to the export")?;
         add_history_directory_to_zip(
             &mut archive,
             history_path,
-            Path::new("dashboard_history"),
+            Path::new("history/buttonboard"),
+            &options,
+        )?;
+    }
+
+    // Navbar history is a separate JSON snapshot stream; include it in the same
+    // export so the navbar can be recovered alongside the Buttonboard.
+    let navbar_history_path = Path::new(NAVBAR_HISTORY_DIR);
+    if navbar_history_path.is_dir() {
+        archive
+            .add_directory("history/navbar/", options.clone())
+            .context("Could not add the navbar history folder to the export")?;
+        add_history_directory_to_zip(
+            &mut archive,
+            navbar_history_path,
+            Path::new("history/navbar"),
             &options,
         )?;
     }
@@ -107,11 +127,12 @@ pub fn export_dashboard_zip(credentials: &AdminCredentials) -> Result<(Vec<u8>, 
         .context("Could not finish dashboard export ZIP")?
         .into_inner();
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let filename = format!("admindash3-export-{timestamp}.zip");
+    let timestamp = make_history_filename()?
+        .strip_prefix("dashboard-")
+        .and_then(|value| value.strip_suffix(".json"))
+        .unwrap_or("backup")
+        .to_string();
+    let filename = format!("admindash3-backup-{timestamp}.zip");
 
     Ok((bytes, filename))
 }
@@ -441,18 +462,22 @@ impl DashboardDocument {
         available_tags: Vec<String>,
         autosort: bool,
     ) -> DashboardPayload {
+        // Sort before the payload is rendered by SSR. This keeps the first
+        // server-rendered order identical to the hydrated client order.
+        let mut buttons: Vec<_> = self
+            .buttons
+            .iter()
+            .map(|button| button.to_view(is_admin))
+            .collect();
+        if autosort {
+            buttons.sort_by_key(|button| button.name.to_lowercase());
+        }
+
         DashboardPayload {
             is_admin,
-
             available_tags,
-
             autosort,
-
-            buttons: self
-                .buttons
-                .iter()
-                .map(|button| button.to_view(is_admin))
-                .collect(),
+            buttons,
         }
     }
 }
@@ -589,18 +614,19 @@ pub fn parse_dashboard_document(path: &Path, file_text: &str) -> Result<Dashboar
 // -----------------------------------------------------------------------------
 /* FULL AUTOMATIC BACKUP
  *
- * The original JSON snapshots in dashboard_history are intentionally retained:
- * the existing history/minidiff UI expects each of those files to be one JSON
- * dashboard document. Do NOT change that format.
+ * The original JSON snapshots in history/buttonboard are intentionally retained:
+ * the existing history/minidiff UI expects each Buttonboard snapshot to be one
+ * JSON dashboard document. Do NOT change that format.
  *
  * Alongside those compatible snapshots, this helper creates a separate folder
  * per backup containing every top-level JSON file (buttons, tags, navbar,
- * preferences, etc.) plus the dashboard_history directory. This gives us a
- * complete restore point without changing the files consumed by minidiff.
+ * preferences, etc.) plus history/buttonboard and history/navbar. This gives
+ * us a complete restore point without changing the files consumed by minidiff.
  */
 // -----------------------------------------------------------------------------
 
 pub fn backup_all_json_files() -> Result<()> {
+    migrate_legacy_history_directories()?;
     let backup_root = Path::new(FULL_BACKUP_DIR);
     std::fs::create_dir_all(backup_root)
         .with_context(|| format!("Could not create {}", backup_root.display()))?;
@@ -612,7 +638,14 @@ pub fn backup_all_json_files() -> Result<()> {
         .strip_prefix("dashboard-")
         .and_then(|value| value.strip_suffix(".json"))
         .unwrap_or("backup");
-    let destination = backup_root.join(format!("backup-{timestamp}"));
+    // A burst of saves can happen inside the same millisecond. Never let one
+    // full-backup folder overwrite another: add a short collision suffix.
+    let mut destination = backup_root.join(format!("backup-{timestamp}"));
+    let mut collision = 1usize;
+    while destination.exists() {
+        destination = backup_root.join(format!("backup-{timestamp}_{collision:02}"));
+        collision += 1;
+    }
     std::fs::create_dir_all(&destination)
         .with_context(|| format!("Could not create {}", destination.display()))?;
 
@@ -620,10 +653,15 @@ pub fn backup_all_json_files() -> Result<()> {
     for entry in std::fs::read_dir(".").context("Could not read the dashboard data directory")? {
         let entry = entry.context("Could not inspect a dashboard data file")?;
         let path = entry.path();
-        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
             continue;
         }
-        let is_json = path.extension()
+        let is_json = path
+            .extension()
             .and_then(|extension| extension.to_str())
             .map(|extension| extension.eq_ignore_ascii_case("json"))
             .unwrap_or(false);
@@ -633,14 +671,18 @@ pub fn backup_all_json_files() -> Result<()> {
         }
     }
 
-    // Preserve dashboard_history using the same relative folder name as Export ZIP.
+    // Preserve history/buttonboard using the same relative folder name as Export ZIP.
     let history_path = Path::new(HISTORY_DIR);
     if history_path.is_dir() {
-        copy_directory_recursively(history_path, &destination.join("dashboard_history"))?;
+        copy_directory_recursively(history_path, &destination.join("history/buttonboard"))?;
+    }
+    let navbar_history_path = Path::new(NAVBAR_HISTORY_DIR);
+    if navbar_history_path.is_dir() {
+        copy_directory_recursively(navbar_history_path, &destination.join("history/navbar"))?;
     }
 
     // Keep only the newest full-backup folders. These are separate from the
-    // minidiff-compatible dashboard_history snapshots and do not affect them.
+    // minidiff-compatible history/buttonboard snapshots and do not affect them.
     let mut backups: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(backup_root)?
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
@@ -657,11 +699,65 @@ pub fn backup_all_json_files() -> Result<()> {
     Ok(())
 }
 
+/// Copy history from the pre-`./history/...` directory names into the new
+/// organized folders. Existing files are never overwritten and the old folders
+/// are deliberately left in place as a safety net for this upgrade.
+pub fn migrate_legacy_history_directories() -> Result<()> {
+    for (legacy, current) in [
+        (Path::new("./dashboard_history"), Path::new(HISTORY_DIR)),
+        (Path::new("./navbar_history"), Path::new(NAVBAR_HISTORY_DIR)),
+    ] {
+        if !legacy.is_dir() {
+            continue;
+        }
+        std::fs::create_dir_all(current)
+            .with_context(|| format!("Could not create {}", current.display()))?;
+        copy_missing_files_recursively(legacy, current)?;
+    }
+    Ok(())
+}
+
+fn copy_missing_files_recursively(source: &Path, destination: &Path) -> Result<()> {
+    std::fs::create_dir_all(destination)?;
+    for entry in
+        std::fs::read_dir(source).with_context(|| format!("Could not read {}", source.display()))?
+    {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_missing_files_recursively(&source_path, &destination_path)?;
+        } else if kind.is_file() {
+            if !destination_path.exists() {
+                std::fs::copy(&source_path, &destination_path)
+                    .with_context(|| format!("Could not migrate {}", source_path.display()))?;
+                std::fs::remove_file(&source_path).with_context(|| {
+                    format!("Could not remove migrated file {}", source_path.display())
+                })?;
+            } else {
+                // If this file was migrated during an earlier run, remove the
+                // duplicate legacy copy. If names conflict but contents differ,
+                // keep the legacy file for manual recovery rather than overwrite.
+                let same_contents =
+                    std::fs::read(&source_path).ok() == std::fs::read(&destination_path).ok();
+                if same_contents {
+                    std::fs::remove_file(&source_path)?;
+                }
+            }
+        }
+    }
+    // Remove the old folder only if migration left it empty. Any conflicting
+    // files remain untouched for manual inspection.
+    let _ = std::fs::remove_dir(source);
+    Ok(())
+}
+
 fn copy_directory_recursively(source: &Path, destination: &Path) -> Result<()> {
     std::fs::create_dir_all(destination)
         .with_context(|| format!("Could not create {}", destination.display()))?;
-    for entry in std::fs::read_dir(source)
-        .with_context(|| format!("Could not read {}", source.display()))?
+    for entry in
+        std::fs::read_dir(source).with_context(|| format!("Could not read {}", source.display()))?
     {
         let entry = entry.context("Could not inspect a backup entry")?;
         let source_path = entry.path();
@@ -743,7 +839,7 @@ pub fn backup_dashboard_file(path: &Path) -> Result<()> {
 // etc. so an existing snapshot can never be accidentally overwritten.
 // -----------------------------------------------------------------------------
 
-fn make_history_filename() -> Result<String> {
+pub fn make_history_filename() -> Result<String> {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| anyhow!("Could not determine current time: {error}"))?;
@@ -777,17 +873,24 @@ fn make_history_filename() -> Result<String> {
     );
 
     let plain = format!("{base}.json");
-    if !Path::new(HISTORY_DIR).join(&plain).exists() {
+    let navbar_plain = plain.replacen("dashboard-", "navbar-", 1);
+    if !Path::new(HISTORY_DIR).join(&plain).exists()
+        && !Path::new(NAVBAR_HISTORY_DIR).join(&navbar_plain).exists()
+    {
         return Ok(plain);
     }
 
     // Several changes can theoretically happen inside the same millisecond.
-    // Keep the timestamp intact and add a tiny collision suffix so we never
-    // overwrite an existing snapshot.
+    // Keep the timestamp intact and add a tiny collision suffix so neither
+    // history stream nor a full-backup folder can overwrite an earlier state.
     for number in 1..=9999 {
         let filename = format!("{base}_{number:02}.json");
-
-        if !Path::new(HISTORY_DIR).join(&filename).exists() {
+        let navbar_filename = filename.replacen("dashboard-", "navbar-", 1);
+        if !Path::new(HISTORY_DIR).join(&filename).exists()
+            && !Path::new(NAVBAR_HISTORY_DIR)
+                .join(&navbar_filename)
+                .exists()
+        {
             return Ok(filename);
         }
     }
@@ -1280,10 +1383,20 @@ pub fn delete_row(
 // Only an administrator may change it.
 // -----------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemPreferences {
-    #[serde(default)]
+    #[serde(default = "default_autosort")]
     pub autosort: bool,
+}
+
+fn default_autosort() -> bool {
+    true
+}
+
+impl Default for SystemPreferences {
+    fn default() -> Self {
+        Self { autosort: true }
+    }
 }
 
 pub fn load_system_preferences() -> Result<SystemPreferences> {
@@ -2024,17 +2137,21 @@ fn ensure_admin(credentials: &AdminCredentials) -> Result<()> {
 // NORMALIZE HASHTAGS
 // -----------------------------------------------------------------------------
 //
-// JSON is strict and always receives exactly one '#' per tag.
-// The user can still type forgiving input such as:
-//     rust #python ###programming
+// JSON is strict and only recognizes tokens that begin with '#'.
+// Plain words and @mentions are not hashtags and are never silently converted.
 // -----------------------------------------------------------------------------
 
 fn normalize_hashtags(value: &str) -> String {
     let mut seen = std::collections::BTreeSet::new();
 
     for raw_tag in value.split_whitespace() {
-        let clean = raw_tag.trim_start_matches('#');
+        // A tag is only a tag when the user explicitly prefixes it with '#'.
+        // In particular, don't turn plain words or @mentions into hashtags.
+        if !raw_tag.starts_with('#') {
+            continue;
+        }
 
+        let clean = raw_tag.trim_start_matches('#');
         if !clean.is_empty() {
             seen.insert(format!("#{clean}"));
         }
@@ -2051,14 +2168,22 @@ fn normalize_tag_list(tags: &[String]) -> Result<Vec<String>> {
     let mut normalized = std::collections::BTreeSet::new();
 
     for raw_tag in tags {
-        let clean = raw_tag.trim().trim_start_matches('#');
-
-        if clean.is_empty() {
+        let raw_tag = raw_tag.trim();
+        if raw_tag.is_empty() {
             continue;
         }
 
+        if !raw_tag.starts_with('#') {
+            bail!("Tag '{raw_tag}' must begin with '#'. Enter tags like #rust or #python.");
+        }
+
+        let clean = raw_tag.trim_start_matches('#');
+        if clean.is_empty() {
+            bail!("A hashtag must contain a name after '#'.");
+        }
+
         if clean.chars().count() < 4 {
-            bail!("Tag '{raw_tag}' must contain at least 4 characters.");
+            bail!("Tag '{raw_tag}' must contain at least 4 characters after '#'.");
         }
 
         normalized.insert(format!("#{clean}"));
@@ -2072,11 +2197,18 @@ fn normalize_tag_list(tags: &[String]) -> Result<Vec<String>> {
 // -----------------------------------------------------------------------------
 
 fn validate_hashtags(value: &str) -> Result<()> {
-    for tag in parse_hashtags(value) {
-        let clean = tag.trim_start_matches('#');
+    for raw_tag in value.split_whitespace() {
+        if !raw_tag.starts_with('#') {
+            bail!("Tag '{raw_tag}' must begin with '#'. Enter tags like #rust or #python.");
+        }
+
+        let clean = raw_tag.trim_start_matches('#');
+        if clean.is_empty() {
+            bail!("A hashtag must contain a name after '#'.");
+        }
 
         if clean.chars().count() < 4 {
-            bail!("Tag '{tag}' must contain at least 4 characters.");
+            bail!("Tag '{raw_tag}' must contain at least 4 characters after '#'.");
         }
     }
 

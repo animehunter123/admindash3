@@ -25,6 +25,21 @@ if [[ "$user_choice" =~ ^[Yy]$ ]]; then
   cargo binstall dioxus-cli -y --force
 fi
 
+# RUSTENV: Clean the GLOBAL Cargo dependency caches so the exported environment
+# contains mostly this project's dependencies instead of every old project's cache.
+# WARNING: This affects OTHER Rust projects on this machine too.
+echo "RUSTENV: Cleaning global Cargo dependency caches..."
+echo "WARNING: This affects OTHER Rust projects on this machine too."
+rm -rf "$HOME/.cargo/registry" "$HOME/.cargo/git"
+# RUSTENV: Dioxus web builds need the wasm32-unknown-unknown Rust target.
+echo "RUSTENV: Ensuring wasm32-unknown-unknown target is installed for Dioxus web builds..."
+rustup target add wasm32-unknown-unknown
+# RUSTENV: Fetch the exact dependencies in Cargo.lock for both the Linux host
+# build and the Dioxus web/WASM build. This happens ONCE at the top.
+echo "RUSTENV: Fetching locked dependencies for x86_64 Linux and wasm32 web builds..."
+cargo fetch --locked --target x86_64-unknown-linux-gnu
+cargo fetch --locked --target wasm32-unknown-unknown
+
 echo "Cleaning ./target and to make admindash3:$version container compressed with release-only..."
 rm -rf ./target/
 
@@ -33,10 +48,16 @@ docker compose down
 
 # Compiling the helper tool and copying it to the top level for migrating v1 buttons to v2 button json files.
 echo "COMPILE: Rebuilding helper tool for json v1 to json v2 migration of buttons files."
+
 cargo build --release --bin data_button_v2_migrator
 cp ./target/release/data_button_v2_migrator .
+
 cargo build --release --bin data_button_v2_to_v3_migrator
 cp ./target/release/data_button_v2_to_v3_migrator .
+
+cargo build --release --bin navbar_v1_to_v2_migrator 
+cp ./target/release/navbar_v1_to_v2_migrator .
+
 rm -rf ./target/
 
 # Compiling the dioxus webapp release version now FROM THE HOST LINUX HOST.
@@ -44,8 +65,31 @@ echo "COMPILE: Rebuilding the release binary with the EMBEDDED GIT COMMIT HASH..
 rm -rf target/dx/Admindash3/release/ 2>/dev/null 1>/dev/null
 dx bundle --web --release
 
+# VERIFY: Confirm that both debug and release builds work with no network access,
+# using the Cargo cache that will be included in the Rust environment archive.
+echo "VERIFY: Testing fully offline debug and release builds..."
+cargo build --locked --offline
+cargo build --locked --offline --release
+
+# RUSTENV: Export the Rust toolchain and this project's Cargo dependency cache.
+# This is an UNCOMPRESSED tar because compression was slow; restore it into $HOME.
+read -p "EXPORT: Do you want to export the rust compile environment of admindash3:$version to /tmp? (y/N): " rustenv_choice
+if [[ "$rustenv_choice" =~ ^[Yy]$ ]]; then
+  echo "EXPORT: Creating Rust environment archive..."
+  rm -f "/tmp/admindash3_rustenviron_${version}.tar"
+  tar --create \
+    --file "/tmp/admindash3_rustenviron_${version}.tar" \
+    --directory "$HOME" \
+    .cargo .rustup
+  ls -lh "/tmp/admindash3_rustenviron_${version}.tar"
+fi
+
 # Remove other compiled targets and only leave the webserver binary - to make the container decrease from 500mb to only 40mb!!!
-rm -rf /tmp/web ; mv ./target/dx/Admindash3/release/web/ /tmp ; rm -rf ./target/ ; mkdir -p ./target/dx/Admindash3/release/ ; mv /tmp/web ./target/dx/Admindash3/release/
+rm -rf /tmp/web
+mv ./target/dx/Admindash3/release/web/ /tmp
+rm -rf ./target/
+mkdir -p ./target/dx/Admindash3/release/
+mv /tmp/web ./target/dx/Admindash3/release/
 
 # Use docker build instead of buildx until Dioxus docs say to do so in the future.
 docker build \
@@ -63,6 +107,8 @@ if [[ "$export_choice" =~ ^[Yy]$ ]]; then
   echo "To Load: 3. Ensure that you keep track of the live version of data_navbar.json and data_buttons.json and CHMOD 777 them." >>/tmp/admindash3_loadnotesss_$version.txt
   echo "To Load: 4. Finally confirm port 80 or 8080 in docker-compose.yml on destination + creds as needed." >>/tmp/admindash3_loadnotesss_$version.txt
   echo "To Load: 5. Dont forget to keep it running in cron or something like: crontab -e >> @reboot cd /opt/admindash3/app/ ; /usr/bin/docker compose down ; /usr/bin/docker compose up -d" >>/tmp/admindash3_loadnotesss_$version.txt
+  echo "To Restore Rust environment: 6. From your HOME directory, run: tar xf /path/to/admindash3_rustenviron_$version.tar -C \$HOME ; then add ~/.cargo/bin to PATH." >>/tmp/admindash3_loadnotesss_$version.txt
+  echo "To Restore Rust environment: 7. For bash, run: source \$HOME/.cargo/env ; for fish, run: source \$HOME/.cargo/env.fish ; or permanently run: fish_add_path \$HOME/.cargo/bin" >>/tmp/admindash3_loadnotesss_$version.txt
   echo "Saving Source code..."
   tar cvfpz /tmp/admindash3_sourcecodes_$version.tar --exclude="*target*" ./
   cd - # Because i moved code into ./app
@@ -78,6 +124,9 @@ if [[ "$export_choice" =~ ^[Yy]$ ]]; then
   echo "2. Ensure that you keep track of the live version of data_navbar.json and data_buttons.json and CHMOD 777 them."
   echo "3. Finally confirm port 80/8080 and admin/admin creds in docker-compose.yml on destination as needed."
   echo "4. Dont forget to keep it running in cron or something like: crontab -e >> @reboot cd /opt/admindash3/app/ ; /usr/bin/docker compose down ; /usr/bin/docker compose up -d"
+  echo "5. To restore the Rust environment, from your HOME directory run: tar xf /path/to/admindash3_rustenviron_$version.tar -C \$HOME"
+  echo "6. This restores ~/.cargo and ~/.rustup. For bash, run: source \$HOME/.cargo/env ; for fish, run: source \$HOME/.cargo/env.fish"
+  echo "7. To permanently add cargo/rustc to fish PATH, run: fish_add_path \$HOME/.cargo/bin ; then verify with: cargo --version ; rustc --version ; dx --version"
 fi
 
 echo "Script complete."

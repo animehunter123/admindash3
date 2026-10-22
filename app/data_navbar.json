@@ -1,17 +1,73 @@
 [
-    {
-        "name": "Admindash3",
-        "url": "/",
+  {
+    "name": "Admindash3",
+    "url": "/",
+    "children": []
+  },
+  {
+    "name": "topTestNavItem01",
+    "url": null,
+    "children": [
+      {
+        "name": "NavItemTest01",
+        "url": "http://google.com",
         "children": []
-    },
-    {
-        "name": "wiki/",
-        "url": "http://wiki/",
+      },
+      {
+        "name": "child1",
+        "url": null,
+        "children": [
+          {
+            "name": "www.google.com",
+            "url": "https://www.google.com/",
+            "children": []
+          },
+          {
+            "name": "child1Child1 (copy)",
+            "url": null,
+            "children": [
+              {
+                "name": "child1Child1",
+                "url": "https://www.mixrcenter.org/",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "topTestNavItem02",
+    "url": null,
+    "children": [
+      {
+        "name": "NavItemTest02",
+        "url": "http://ubuntu.com",
         "children": []
-    },
-    {
-        "name": "cp/",
-        "url": "http://cp/",
-        "children": []
-    }
+      }
+    ]
+  },
+  {
+    "name": "SuloveNavBar",
+    "url": null,
+    "children": []
+  },
+  {
+    "name": "SuloveNavBar (copy)",
+    "url": null,
+    "children": [
+      {
+        "name": "child1Child1",
+        "url": null,
+        "children": [
+          {
+            "name": "child1Child1",
+            "url": "https://www.mixrcenter.org/",
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
 ]

@@ -5,11 +5,27 @@ services:
     ports:
       - "80:80"
     volumes:
+      # Buttons Data
       #- ./data_buttons.json:/usr/local/app/data_buttons.json
       #- ./data_buttons.v2.json:/usr/local/app/data_buttons.v2.json
       - ./data_buttons.v3.json:/usr/local/app/data_buttons.v3.json
-      - ./data_navbar.json:/usr/local/app/data_navbar.json
-      - ./dashboard_history:/usr/local/app/dashboard_history
+
+      # Navbar Data
+      - ./data_navbar.v2.json:/usr/local/app/data_navbar.v2.json
+
+      # History Data
+      #- ./dashboard_history:/usr/local/app/dashboard_history
+      - ./history:/usr/local/app/history
+
+      # Backups Data
+      - ./backups:/usr/local/app/backups
+
+      # Data Tags
+      - ./data_tags.json:/usr/local/app/data_tags.json
+
+      # Systemwide Preferences
+      - ./system_preferences.json:/usr/local/app/system_preferences.json
+
     restart: unless-stopped
     environment:
       adminusername: admin

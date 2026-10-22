@@ -10,11 +10,15 @@ target/
 **/*.rs.bk
 
 # This DIRECTORY IS ALREADY CREATED ON INITIAL SAVE, no need to keep it in git
+backups/
+history/
 dashboard_history
 app/dashboard_backups
+app/navbar_history
 
 # This is a helper binary copied to the top level in case we need to migrate json v1 to json v2 files.
 data_button_v2_migrator
+app/navbar_v1_to_v2_migrator
 app/data_button_v2_to_v3_migrator
 
 # This tailwind.css file is generated upon rebuilds, no need to check it in anymore.

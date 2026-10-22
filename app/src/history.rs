@@ -4,7 +4,7 @@ use crate::dashboard_data::{self, AdminCredentials};
 use crate::{ADMIN_AUTH, DASHBOARD_REFRESH_KEY, HISTORY_PAGE};
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const HISTORY_DIR: &str = dashboard_data::HISTORY_DIR;
 pub const MAX_SNAPSHOTS: usize = dashboard_data::MAX_HISTORY_SNAPSHOTS;
@@ -13,6 +13,7 @@ pub const SNAPSHOTS_PER_PAGE: usize = 10;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HistorySnapshot {
     pub filename: String,
+    pub category: String,
     pub created_label: String,
     pub sort_key: String,
     pub preview: Vec<HistoryDiffLine>,
@@ -45,113 +46,119 @@ pub enum HistoryDiffKind {
 // -----------------------------------------------------------------------------
 
 pub fn list_history() -> anyhow::Result<Vec<HistorySnapshot>> {
-    if !Path::new(HISTORY_DIR).exists() {
-        return Ok(Vec::new());
-    }
-
+    dashboard_data::migrate_legacy_history_directories()?;
     let mut snapshots = Vec::new();
 
-    // Compare snapshots with the current live dashboard.  The UI only shows a
-    // small preview, giving the admin a quick "what will change?" view before
-    // choosing Revert.
-    let current_document = if Path::new(dashboard_data::BUTTONS_V3_FILE).exists() {
-        Some(std::fs::read_to_string(dashboard_data::BUTTONS_V3_FILE)?)
-    } else {
-        None
-    };
-
-    for entry in std::fs::read_dir(HISTORY_DIR)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if !path.is_file() {
+    // History is intentionally unified in this page: Buttonboard snapshots are
+    // individual dashboard JSON documents, while navbar snapshots are complete
+    // data_navbar.v2.json files. Each one is compared with its own live document.
+    for (directory, category, live_path) in [
+        (HISTORY_DIR, "Buttonboard", dashboard_data::BUTTONS_V3_FILE),
+        (
+            dashboard_data::NAVBAR_HISTORY_DIR,
+            "Navbar",
+            crate::data_navbar::NAVBAR_FILE,
+        ),
+    ] {
+        let history_path = Path::new(directory);
+        if !history_path.exists() {
             continue;
         }
-
-        let Some(filename) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
+        let current_document = if Path::new(live_path).exists() {
+            Some(std::fs::read_to_string(live_path)?)
+        } else {
+            None
         };
 
-        if !is_safe_snapshot_filename(filename) {
-            continue;
+        for entry in std::fs::read_dir(history_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(filename) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !is_safe_snapshot_filename(filename) {
+                continue;
+            }
+
+            let sort_key = filename
+                .strip_prefix("dashboard-")
+                .or_else(|| filename.strip_prefix("navbar-"))
+                .unwrap_or(filename)
+                .to_string();
+            let created_label = timestamp_label_from_filename(filename);
+            let preview = current_document
+                .as_deref()
+                .and_then(|current| build_history_preview(&path, current).ok())
+                .unwrap_or_default();
+            snapshots.push(HistorySnapshot {
+                filename: filename.to_string(),
+                category: category.to_string(),
+                created_label,
+                sort_key,
+                preview,
+            });
         }
-
-        let sort_key = filename.to_string();
-        let created_label = timestamp_label_from_filename(filename);
-        let preview = current_document
-            .as_deref()
-            .and_then(|current| build_history_preview(&path, current).ok())
-            .unwrap_or_default();
-
-        snapshots.push(HistorySnapshot {
-            filename: filename.to_string(),
-            created_label,
-            sort_key,
-            preview,
-        });
     }
 
-    // New filenames are YYYYMMDD_HHMMSS_milliseconds, so reverse filename ordering puts
-    // the newest snapshot first.
     snapshots.sort_by(|left, right| {
         right
             .sort_key
             .cmp(&left.sort_key)
             .then_with(|| right.filename.cmp(&left.filename))
     });
-
     Ok(snapshots)
 }
 
 fn is_safe_snapshot_filename(filename: &str) -> bool {
-    let Some(stem) = filename
-        .strip_prefix("dashboard-")
-        .and_then(|value| value.strip_suffix(".json"))
-    else {
+    let Some(stem) = filename.strip_suffix(".json") else {
         return false;
     };
-
+    let stem = stem
+        .strip_prefix("dashboard-")
+        .or_else(|| stem.strip_prefix("navbar-"));
+    let Some(stem) = stem else {
+        return false;
+    };
+    // New Buttonboard format is YYYYMMDD_HHMMSS_mmm, with optional collision suffix.
     let bytes = stem.as_bytes();
-
-    // New format:
-    // dashboard-YYYYMMDD_HHMMSS_milliseconds.json
-    //
-    // Example:
-    // dashboard-20260921_061530_123.json
-    if bytes.len() == 19
+    if bytes.len() >= 19
         && bytes[8] == b'_'
         && bytes[15] == b'_'
-        && bytes[..8].iter().all(u8::is_ascii_digit)
-        && bytes[9..15].iter().all(u8::is_ascii_digit)
-        && bytes[16..].iter().all(u8::is_ascii_digit)
-    {
-        return true;
-    }
-
-    // Same format with a collision suffix:
-    // dashboard-YYYYMMDD_HHMMSS_milliseconds_01.json
-    if bytes.len() >= 22
-        && bytes[8] == b'_'
-        && bytes[15] == b'_'
-        && bytes[19] == b'_'
         && bytes[..8].iter().all(u8::is_ascii_digit)
         && bytes[9..15].iter().all(u8::is_ascii_digit)
         && bytes[16..19].iter().all(u8::is_ascii_digit)
-        && bytes[20..].iter().all(u8::is_ascii_digit)
+        && (bytes.len() == 19
+            || (bytes.len() >= 22
+                && bytes[19] == b'_'
+                && bytes[20..].iter().all(u8::is_ascii_digit)))
     {
         return true;
     }
+    // Older navbar files use epoch-seconds-nanoseconds; Buttonboard also has
+    // legacy numeric-only names. Only numeric timestamp punctuation is accepted.
+    !stem.is_empty()
+        && stem
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '_' || c == '-')
+}
 
-    // Accept the old nanosecond filename format too, so upgrading does not
-    // make existing snapshots disappear from the History page.
-    stem.chars().all(|character| character.is_ascii_digit())
+fn history_directory_for(filename: &str) -> &'static str {
+    if filename.starts_with("navbar-") {
+        dashboard_data::NAVBAR_HISTORY_DIR
+    } else {
+        HISTORY_DIR
+    }
 }
 
 fn timestamp_label_from_filename(filename: &str) -> String {
-    let Some(stem) = filename
-        .strip_prefix("dashboard-")
-        .and_then(|value| value.strip_suffix(".json"))
-    else {
+    let Some(stem) = filename.strip_suffix(".json").and_then(|value| {
+        value
+            .strip_prefix("dashboard-")
+            .or_else(|| value.strip_prefix("navbar-"))
+    }) else {
         return "Unknown timestamp".to_string();
     };
 
@@ -299,30 +306,66 @@ pub fn revert_history_snapshot(
     if !credentials.is_admin() {
         anyhow::bail!("Admin login is required for this action.");
     }
-
     if !is_safe_snapshot_filename(filename) {
         anyhow::bail!("Invalid history snapshot name.");
     }
-
-    let snapshot_path = Path::new(HISTORY_DIR).join(filename);
-
+    let snapshot_path = Path::new(history_directory_for(filename)).join(filename);
     if !snapshot_path.exists() {
         anyhow::bail!("History snapshot '{filename}' no longer exists.");
     }
 
-    let document = dashboard_data::read_dashboard_document(&snapshot_path)?;
+    if filename.starts_with("navbar-") {
+        let snapshot_json = std::fs::read_to_string(&snapshot_path)?;
+        let items: Vec<crate::data_navbar::NavItem> = serde_json::from_str(&snapshot_json)?;
+        crate::data_navbar::validate_nav_items(&items).map_err(anyhow::Error::msg)?;
 
-    dashboard_data::write_dashboard_document(
-        Path::new(dashboard_data::BUTTONS_V3_FILE),
-        &document,
-    )?;
-
+        // Preserve the current state as another navbar snapshot before replacing it,
+        // and make a full timestamped folder backup of all JSON/history content.
+        dashboard_data::backup_all_json_files()?;
+        save_current_navbar_snapshot()?;
+        std::fs::write(
+            crate::data_navbar::NAVBAR_FILE,
+            format!("{}\n", serde_json::to_string_pretty(&items)?),
+        )?;
+    } else {
+        let document = dashboard_data::read_dashboard_document(&snapshot_path)?;
+        dashboard_data::write_dashboard_document(
+            Path::new(dashboard_data::BUTTONS_V3_FILE),
+            &document,
+        )?;
+    }
     Ok(())
 }
 
-// -----------------------------------------------------------------------------
-// DELETE ONE SNAPSHOT
-// -----------------------------------------------------------------------------
+fn save_current_navbar_snapshot() -> anyhow::Result<()> {
+    let live_path = Path::new(crate::data_navbar::NAVBAR_FILE);
+    if !live_path.exists() {
+        return Ok(());
+    }
+    let history_dir = Path::new(dashboard_data::NAVBAR_HISTORY_DIR);
+    std::fs::create_dir_all(history_dir)?;
+    let filename = dashboard_data::make_history_filename()?.replacen("dashboard-", "navbar-", 1);
+    let destination = history_dir.join(filename);
+    std::fs::copy(live_path, &destination)?;
+
+    // Keep the same 100-snapshot retention limit used by ordinary navbar saves.
+    let mut snapshots: Vec<(String, PathBuf)> = std::fs::read_dir(history_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            (path.is_file() && name.starts_with("navbar-") && name.ends_with(".json"))
+                .then_some((name, path))
+        })
+        .collect();
+    snapshots.sort_by(|left, right| left.0.cmp(&right.0));
+    for (_, old_path) in snapshots.into_iter().rev().skip(MAX_SNAPSHOTS) {
+        let diff_path = old_path.with_extension("diff");
+        let _ = std::fs::remove_file(diff_path);
+        let _ = std::fs::remove_file(old_path);
+    }
+    Ok(())
+}
 
 pub fn delete_history_snapshot(
     credentials: &AdminCredentials,
@@ -331,47 +374,100 @@ pub fn delete_history_snapshot(
     if !credentials.is_admin() {
         anyhow::bail!("Admin login is required for this action.");
     }
-
     if !is_safe_snapshot_filename(filename) {
         anyhow::bail!("Invalid history snapshot name.");
     }
-
-    let snapshot_path = Path::new(HISTORY_DIR).join(filename);
-
+    let snapshot_path = Path::new(history_directory_for(filename)).join(filename);
     if !snapshot_path.exists() {
         anyhow::bail!("History snapshot '{filename}' no longer exists.");
     }
-
-    std::fs::remove_file(snapshot_path)?;
-
+    std::fs::remove_file(&snapshot_path)?;
+    if filename.starts_with("navbar-") {
+        let diff_path = snapshot_path.with_extension("diff");
+        if diff_path.exists() {
+            std::fs::remove_file(diff_path)?;
+        }
+    }
     Ok(())
 }
-
-// -----------------------------------------------------------------------------
-// CLEAR HISTORY
-// -----------------------------------------------------------------------------
 
 pub fn clear_history(credentials: &AdminCredentials) -> anyhow::Result<usize> {
     if !credentials.is_admin() {
         anyhow::bail!("Admin login is required for this action.");
     }
+    dashboard_data::migrate_legacy_history_directories()?;
+    let mut removed = 0usize;
+    let mut errors: Vec<String> = Vec::new();
 
-    if !Path::new(HISTORY_DIR).exists() {
+    // Delete snapshot *files* only. Never remove_dir_all on these roots:
+    // under Docker Compose they may be bind-mounted volumes, and removing a
+    // mount point returns EBUSY ("Device or resource busy") — the same class
+    // of failure as rename-over-bind-mount on data_navbar.v2.json.
+    for directory in [HISTORY_DIR, dashboard_data::NAVBAR_HISTORY_DIR] {
+        removed += clear_snapshot_files_in_dir(Path::new(directory), &mut errors)?;
+    }
+
+    // Legacy folder names (pre-./history/... layout). Clear their *contents*
+    // the same way; do not delete the directory inode itself.
+    for legacy in ["./dashboard_history", "./navbar_history"] {
+        removed += clear_snapshot_files_in_dir(Path::new(legacy), &mut errors)?;
+        // Also wipe any nested leftover files that are not snapshot-named.
+        removed += clear_all_files_recursively(Path::new(legacy), &mut errors)?;
+    }
+
+    if !errors.is_empty() {
+        anyhow::bail!(
+            "Cleared {removed} history file(s), but some could not be removed:\n{}",
+            errors.join("\n")
+        );
+    }
+    Ok(removed)
+}
+
+/// Remove recognised history snapshot / diff files directly under `dir`.
+fn clear_snapshot_files_in_dir(dir: &Path, errors: &mut Vec<String>) -> anyhow::Result<usize> {
+    if !dir.is_dir() {
         return Ok(0);
     }
-
-    let snapshots = list_history()?;
     let mut removed = 0usize;
-
-    for snapshot in snapshots {
-        let path = Path::new(HISTORY_DIR).join(&snapshot.filename);
-
-        if path.exists() {
-            std::fs::remove_file(path)?;
-            removed += 1;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_safe_snapshot_filename(&name) || name.ends_with(".diff") {
+            match std::fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(error) => errors.push(format!("{}: {error}", path.display())),
+            }
         }
     }
+    Ok(removed)
+}
 
+/// Recursively delete every regular file under `dir`, but never the directory
+/// roots themselves (safe for Docker bind mounts).
+fn clear_all_files_recursively(dir: &Path, errors: &mut Vec<String>) -> anyhow::Result<usize> {
+    if !dir.is_dir() {
+        return Ok(0);
+    }
+    let mut removed = 0usize;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            removed += clear_all_files_recursively(&path, errors)?;
+            // Best-effort: remove empty nested dirs (not the bind-mount root).
+            let _ = std::fs::remove_dir(&path);
+        } else if path.is_file() {
+            match std::fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(error) => errors.push(format!("{}: {error}", path.display())),
+            }
+        }
+    }
     Ok(removed)
 }
 
@@ -422,8 +518,8 @@ pub fn HistoryPage() -> Element {
                     div {
                         h1 { class: "text-xl font-semibold text-blue-950", "Dashboard History" }
                         p { class: "mt-1 text-sm text-blue-800",
-                            "The 100 most recent dashboard JSON snapshots are kept here, with 10 snapshots shown per page. "
-                            "Every dashboard edit creates a backup before the new JSON is written."
+                            "The most recent Buttonboard and navbar JSON snapshots are shown together, 10 per page. "
+                            "Each category has its own mini diff and can be restored independently."
                         }
                     }
 
@@ -467,7 +563,7 @@ pub fn HistoryPage() -> Element {
                 match &*history.read_unchecked() {
                     Some(Ok(snapshots)) if snapshots.is_empty() => rsx! {
                         div { class: "rounded-lg border border-gray-200 bg-white p-6 text-gray-600 shadow-sm",
-                            "No dashboard history snapshots exist yet."
+                            "No Buttonboard or navbar history snapshots exist yet."
                         }
                     },
                     Some(Ok(snapshots)) => {
@@ -480,7 +576,7 @@ pub fn HistoryPage() -> Element {
                             div { class: "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm",
                                 div { class: "text-sm text-gray-600",
                                     "Showing snapshots {start + 1}-{end} of {snapshots.len()} "
-                                    "(100 maximum, 10 per page)"
+                                    "(up to 100 Buttonboard snapshots plus up to 100 navbar snapshots; 10 per page)"
                                 }
 
                                 if total_pages > 1 {
@@ -527,8 +623,9 @@ pub fn HistoryPage() -> Element {
                                         // snapshot card to become wider.
                                         div { class: "grid grid-cols-1 items-start gap-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto]",
                                             div { class: "min-w-0 w-full",
-                                                div { class: "font-medium text-gray-900",
+                                                div { class: "flex flex-wrap items-center gap-2 font-medium text-gray-900",
                                                     "Snapshot {snapshot_number}"
+                                                    span { class: if snapshot.category == "Navbar" { "rounded bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800" } else { "rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800" }, "{snapshot.category}" }
                                                 }
                                                 div { class: "mt-1 font-mono text-xs text-gray-500 break-all",
                                                     "{snapshot.filename}"
@@ -543,7 +640,7 @@ pub fn HistoryPage() -> Element {
                                                     // below keeps very long JSON lines contained.
                                                     div { class: "mt-3 w-full min-w-0 overflow-hidden rounded-md border border-gray-200 bg-gray-950",
                                                         div { class: "border-b border-gray-700 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400",
-                                                            "Mini diff vs current dashboard"
+                                                            "Mini diff vs current {snapshot.category}"
                                                         }
                                                         pre { class: "max-h-40 w-full max-w-full overflow-auto px-3 py-2 font-mono text-[11px] leading-5",
                                                             for line in snapshot.preview.iter() {
@@ -835,7 +932,7 @@ pub fn HistoryPage() -> Element {
                                                 show_clear_modal.set(false);
                                                 current_page.set(0);
                                                 status_message.set(Some(
-                                                    format!("Cleared {count} dashboard history snapshot(s).")
+                                                    format!("Cleared {count} history file(s) across Buttonboard and navbar.")
                                                 ));
 
                                                 // Reload the server future so the

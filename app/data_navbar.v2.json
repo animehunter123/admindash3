@@ -1,0 +1,110 @@
+[
+  {
+    "name": "Admindash3",
+    "url": "/",
+    "open_in_new_window": false,
+    "children": []
+  },
+  {
+    "name": "cp/",
+    "url": "http://cp/",
+    "open_in_new_window": false,
+    "children": []
+  },
+  {
+    "name": "wiki/",
+    "url": "http://wiki/",
+    "open_in_new_window": false,
+    "children": []
+  },
+  {
+    "name": "top01",
+    "url": null,
+    "open_in_new_window": false,
+    "children": [
+      {
+        "name": "top01item01",
+        "url": "http://google.com",
+        "open_in_new_window": true,
+        "children": []
+      },
+      {
+        "name": "child1",
+        "url": null,
+        "open_in_new_window": false,
+        "children": [
+          {
+            "name": "www.google.com (unchecked iframe)",
+            "url": "https://www.google.com/",
+            "open_in_new_window": false,
+            "children": []
+          },
+          {
+            "name": "child1Child1Child2 (copy)",
+            "url": "https://www.sony.com",
+            "open_in_new_window": false,
+            "children": [
+              {
+                "name": "NWchild1Child1NW",
+                "url": "https://www.mixrcenter.org/",
+                "open_in_new_window": true,
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "google in new window",
+        "url": "https://google.com",
+        "open_in_new_window": true,
+        "children": []
+      }
+    ]
+  },
+  {
+    "name": "NW",
+    "url": null,
+    "open_in_new_window": false,
+    "children": [
+      {
+        "name": "top01item01",
+        "url": "http://google.com",
+        "open_in_new_window": true,
+        "children": []
+      },
+      {
+        "name": "child1",
+        "url": null,
+        "open_in_new_window": false,
+        "children": [
+          {
+            "name": "www.google.com (unchecked iframe)",
+            "url": "https://www.google.com/",
+            "open_in_new_window": false,
+            "children": []
+          },
+          {
+            "name": "child1Child1Child2 (copy)",
+            "url": "https://www.sony.com",
+            "open_in_new_window": false,
+            "children": [
+              {
+                "name": "NWchild1Child1NW",
+                "url": "https://www.mixrcenter.org/",
+                "open_in_new_window": true,
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "google in new window",
+        "url": "https://google.com",
+        "open_in_new_window": true,
+        "children": []
+      }
+    ]
+  }
+]
