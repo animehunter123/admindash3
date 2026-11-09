@@ -1719,7 +1719,7 @@ pub fn migrate_v2_file_to_v3_string(path: &Path) -> Result<String> {
     let json = serde_json::to_string_pretty(&document_to_stored_dashboard(&document))
         .with_context(|| format!("Could not serialize migrated data for {}", path.display()))?;
 
-    Ok(format!("{json}\\n"))
+    Ok(format!("{json}\n"))
 }
 
 // -----------------------------------------------------------------------------
@@ -2277,3 +2277,4 @@ impl ButtonRow {
         }
     }
 }
+

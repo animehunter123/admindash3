@@ -332,714 +332,736 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
     let payload_for_divider_names = payload.clone();
 
     rsx! {
-        div { class: "container mx-auto px-4 mt-6",
-            if is_admin {
-                // -----------------------------------------------------------------
-                // ADMIN USAGE
-                // -----------------------------------------------------------------
-                // Each control gets its own small card.  The button and its
-                // explanation stay together, which makes the admin panel much
-                // easier to scan than a row of unexplained buttons.
-                //
-                // The grid changes from five columns on wide screens to fewer
-                // columns on smaller screens, so the same information remains
-                // readable on a phone-sized browser.
-                div {
-                    class: "mb-4 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-sm",
-
+            div { class: "container mx-auto px-4 mt-6",
+                if is_admin {
+                    // -----------------------------------------------------------------
+                    // ADMIN USAGE
+                    // -----------------------------------------------------------------
+                    // Each control gets its own small card.  The button and its
+                    // explanation stay together, which makes the admin panel much
+                    // easier to scan than a row of unexplained buttons.
+                    //
+                    // The grid changes from five columns on wide screens to fewer
+                    // columns on smaller screens, so the same information remains
+                    // readable on a phone-sized browser.
                     div {
-                        class: "border-b border-blue-100 bg-white/70 px-4 py-4 sm:px-5",
+                        class: "mb-4 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-sm",
 
                         div {
-                            class: "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
+                            class: "border-b border-blue-100 bg-white/70 px-4 py-4 sm:px-5",
 
                             div {
-                                class: "min-w-0",
-                                h2 {
-                                    class: "text-lg font-semibold tracking-tight text-blue-950",
-                                    "Admin Usage"
-                                }
-                                button {
-                                    class: "mt-1 text-left text-sm font-medium text-blue-700 hover:text-blue-900",
-                                    onclick: move |_| admin_help_open.set(!admin_help_open()),
-                                    if admin_help_open() { "Hide admin instructions ▲" } else { "Show admin instructions ▼" }
-                                }
-                                if admin_help_open() {
-                                    div { class: "mt-3 max-w-4xl space-y-3 rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-blue-950",
-                                        p { class: "font-semibold", "THIS IS THE ADMIN DASHBOARD (NEW IMPLEMENTATION IM WORKING ON TO ADD MORE USAGE FOR THE LM TEAM BASED ON THE ORIGINAL PYTHON FLASK APP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" }
-                                        p { class: "font-semibold", "Important: changes save immediately. Be careful when editing or deleting items." }
-                                        p { "Buttonboard and the navbar are two separate parts of the dashboard. Use the Buttonboard controls to organize the main buttons and their URL rows; use Manage Navbar to edit the top navigation links and nested submenus." }
-                                        div {
-                                            p { class: "font-semibold", "Buttonboard: add, edit, move, or remove" }
-                                            ul { class: "ml-5 list-disc space-y-1",
-                                                li { "Use +Button to create a main button and its first URL row. Give it a clear, unique name." }
-                                                li { "Use the edit controls on a button or URL row to change names, URLs, tags, comments, or other row details. Use Clone when you want a copy before making changes." }
-                                                li { "Use Move to place a URL row under another button or create a new button for it. Check the destination carefully before confirming." }
-                                                li { "Delete removes the selected item; deleting a button can remove its rows too. Double-check the selected item before confirming any deletion." }
-                                            }
-                                        }
-                                        div {
-                                            p { class: "font-semibold", "Navbar: add, edit, remove, or nest links" }
-                                            ul { class: "ml-5 list-disc space-y-1",
-                                                li { "Open Manage Navbar in the navbar admin controls. Add a top-level item or add a child under an existing item to create a submenu." }
-                                                li { "Use Edit to change a label or URL. Use Move to change its parent or order, and Clone to make a copy." }
-                                                li { "Delete removes that item and its nested children. The fixed Admindash3 brand item is intentionally not editable or movable from the manager." }
-                                                li { "A dropdown heading can also retain a URL: when nesting under a link that already has a URL, the editor preserves that destination as a child so it is not lost." }
-                                            }
-                                        }
-                                        div {
-                                            p { class: "font-semibold", "What the admin controls do" }
-                                            ul { class: "ml-5 list-disc space-y-1",
-                                                li { "Autosort controls whether Buttonboard items are saved in alphabetical order. When enabled, manual drag ordering is not available." }
-                                                li { "Tags lets you manage the available tags; JSON Check validates the dashboard data; History opens Dashboard History, where you can review and restore Buttonboard or navbar snapshots." }
-                                                li { "Export ZIP downloads a backup archive containing the current JSON files and both history folders (history/buttonboard and history/navbar). It uses the same folder layout as the automatic full backups." }
-                                                li { "Automatic full backups are created before changes and kept in timestamped folders under backups/dashboard. Dashboard History also keeps individual snapshots so you can revert a specific edit." }
-                                            }
-                                        }
-                                        p { class: "rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900", "Safety tip: before a large cleanup or a series of moves, use Export ZIP. After each change, check the result in the dashboard. If something goes wrong, open History and restore the appropriate snapshot. A restore itself creates a new backup, so you can undo the restore too." }
-                                    }
-                                }
-                            }
+                                class: "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
 
-                            button {
-                                class: "shrink-0 rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Download the current JSON files and both history folders in a timestamp-ready backup layout.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| async move {
-                                    mutation_error.set(None);
-                                    status_message.set(None);
-                                    mutation_busy.set(true);
-
-                                    match export_dashboard_zip_server(ADMIN_AUTH()).await {
-                                        Ok((bytes, filename)) => {
-                                            #[cfg(target_arch = "wasm32")]
-                                            {
-                                                download_zip_in_browser(bytes, filename);
-                                                status_message.set(Some(
-                                                    "Dashboard export ZIP downloaded.".to_string(),
-                                                ));
-                                            }
-
-                                            #[cfg(not(target_arch = "wasm32"))]
-                                            {
-                                                let _ = (bytes, filename);
-                                                status_message.set(Some(
-                                                    "Dashboard export created.".to_string(),
-                                                ));
-                                            }
-                                        }
-                                        Err(error) => mutation_error.set(Some(error.to_string())),
-                                    }
-
-                                    mutation_busy.set(false);
-                                },
-                                "⇩ Export ZIP"
-                            }
-                        }
-                    }
-
-                    div {
-                        class: "grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5",
-
-                        // ---------------------------------------------------------
-                        // +Button
-                        // ---------------------------------------------------------
-                        div {
-                            class: "flex h-full flex-col rounded-lg border border-blue-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                            button {
-                                class: "w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Create a new main button and its first URL row.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| {
-                                    mutation_error.set(None);
-                                    button_editor.set(Some(ButtonEditorState {
-                                        mode: ButtonEditorMode::Create,
-                                        draft: ButtonDraft::default(),
-                                    }));
-                                },
-                                "+Button"
-                            }
-                            p {
-                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
-                                "Create a new main dashboard button. It starts with its first URL row."
-                            }
-                        }
-
-                        // ---------------------------------------------------------
-                        // +Tags
-                        // ---------------------------------------------------------
-                        div {
-                            class: "flex h-full flex-col rounded-lg border border-indigo-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                            button {
-                                class: "w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Open the global tag manager to add, remove, and save managed tags.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| {
-                                    mutation_error.set(None);
-                                    tag_manager_draft.set(available_tags_for_manager.clone());
-                                    new_tag.set(String::new());
-                                    tag_manager_open.set(true);
-                                },
-                                "+Tags"
-                            }
-                            p {
-                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
-                                "Manage the global tags used by URL rows. Add, remove, and save tags here."
-                            }
-                        }
-
-                        // ---------------------------------------------------------
-                        // +JSON Check
-                        // ---------------------------------------------------------
-                        div {
-                            class: "flex h-full flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                            button {
-                                class: "w-full rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Validate data_buttons.v3.json with the dashboard parser.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| async move {
-                                    mutation_error.set(None);
-                                    status_message.set(None);
-                                    mutation_busy.set(true);
-
-                                    match check_json_server(ADMIN_AUTH()).await {
-                                        Ok(()) => {
-                                            status_message.set(Some(
-                                                "Dashboard JSON is valid.".to_string()
-                                            ));
-                                        }
-                                        Err(error) => {
-                                            mutation_error.set(Some(error.to_string()));
-                                        }
-                                    }
-
-                                    mutation_busy.set(false);
-                                },
-                                "+JSON Check"
-                            }
-                            p {
-                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
-                                "Check the dashboard JSON using the same parser used when the dashboard loads."
-                            }
-                        }
-
-                        // ---------------------------------------------------------
-                        // +History
-                        // ---------------------------------------------------------
-                        div {
-                            class: "flex h-full flex-col rounded-lg border border-purple-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                            button {
-                                class: "w-full rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60",
-                                title: "Open the dashboard history page.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| {
-                                    mutation_error.set(None);
-                                    status_message.set(None);
-                                    *HISTORY_PAGE.write() = true;
-                                },
-                                "+History"
-                            }
-                            p {
-                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
-                                "View saved JSON snapshots and use the history tools to inspect or restore earlier versions."
-                            }
-                        }
-
-                        // ---------------------------------------------------------
-                        // +Autosort
-                        // ---------------------------------------------------------
-                        div {
-                            class: "flex h-full flex-col rounded-lg border border-emerald-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                            button {
-                                class: if autosort_enabled() {
-                                    "w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                } else {
-                                    "w-full rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                },
-                                title: "Toggle system-wide alphabetical sorting of the main button cards.",
-                                disabled: mutation_busy(),
-                                onclick: move |_| async move {
-                                    let enabled = !autosort_enabled();
-                                    autosort_enabled.set(enabled);
-
-                                    match set_autosort_server(ADMIN_AUTH(), enabled).await {
-                                        Ok(()) => {
-                                            status_message.set(Some(format!(
-                                                "Autosort is now {}.",
-                                                if enabled { "ON" } else { "OFF" }
-                                            )));
-                                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                                        }
-                                        Err(error) => {
-                                            autosort_enabled.set(!enabled);
-                                            mutation_error.set(Some(error.to_string()));
-                                        }
-                                    }
-                                },
-                                if autosort_enabled() { "+Autosort ON" } else { "+Autosort OFF" }
-                            }
-                            p {
-                                class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
-                                "Turn alphabetical sorting of the main button cards on or off. This is system-wide and survives F5."
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(message) = status_message() {
-                div {
-                    class: "mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800",
-                    "{message}"
-                }
-            }
-
-            if let Some(message) = mutation_error() {
-                div {
-                    class: "mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700",
-                    "{message}"
-                }
-            }
-
-            div { class: "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5",
-                for (index, button) in buttons_to_display.iter().enumerate() {
-                    {
-                        let button_name = button.name.clone();
-                        let drag_button_name = button_name.clone();
-                        let drop_button_name = button_name.clone();
-                        let button_for_editor = button.clone();
-
-                        rsx! {
-                            div {
-                                class: if is_admin && !autosort_enabled() {
-                                    if dragging_button_index() == Some(index) {
-                                        "group relative cursor-grabbing opacity-70 transition"
-                                    } else {
-                                        "group relative cursor-grab transition"
-                                    }
-                                } else {
-                                    "group relative"
-                                },
-                                draggable: is_admin && !autosort_enabled(),
-                                ondragstart: move |_| {
-                                    if is_admin && !autosort_enabled() {
-                                        dragging_button_index.set(Some(index));
-                                        dragging_button_name.set(Some(drag_button_name.clone()));
-                                    }
-                                },
-                                ondragend: move |_| {
-                                    dragging_button_index.set(None);
-                                    dragging_button_name.set(None);
-                                },
-                                ondragover: move |event| {
-                                    if is_admin && !autosort_enabled() {
-                                        event.prevent_default();
-                                    }
-                                },
-                                ondrop: move |event| {
-                                    if !is_admin || autosort_enabled() {
-                                        return;
-                                    }
-
-                                    event.prevent_default();
-
-                                    let Some(from_index) = dragging_button_index() else {
-                                        return;
-                                    };
-
-                                    dragging_button_index.set(None);
-
-                                    let source_name = dragging_button_name()
-                                        .unwrap_or_else(|| "this button".to_string());
-                                    dragging_button_name.set(None);
-
-                                    if from_index == index || mutation_busy() {
-                                        return;
-                                    }
-
-                                    reorder_confirmation.set(Some(ReorderConfirmation::Button {
-                                        from_index,
-                                        to_index: index,
-                                        source_name,
-                                        target_name: drop_button_name.clone(),
-                                    }));
-                                },
-
-                                // Keep the admin controls together in one small
-                                // row at the card's top-right. Previously each
-                                // control had its own absolute position, which
-                                // could overlap depending on card/text layout.
-                                if is_admin {
-                                    div {
-                                        class: "absolute right-2 top-2 z-10 flex items-center gap-1",
-                                        button {
-                                            class: "rounded-full bg-white/95 px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-white",
-                                            title: "Edit this button",
-                                            onclick: move |event| {
-                                                event.stop_propagation();
-                                                event.prevent_default();
-                                                mutation_error.set(None);
-                                                button_editor.set(Some(ButtonEditorState {
-                                                    mode: ButtonEditorMode::Edit {
-                                                        original_name: button_for_editor.name.clone(),
-                                                    },
-                                                    draft: ButtonDraft {
-                                                        name: button_for_editor.name.clone(),
-                                                        ..ButtonDraft::default()
-                                                    },
-                                                }));
-                                            },
-                                            "✎"
-                                        }
-
-                                        if !autosort_enabled() {
-                                            div {
-                                                class: "rounded-full bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800 shadow",
-                                                title: "Drag this main button to another position.",
-                                                "⠿"
-                                            }
-                                        }
-                                    }
-                                }
-
-                                a {
-                                    href: {
-                                        #[cfg(target_arch = "wasm32")]
-                                        {
-                                            let encoded = js_sys::encode_uri_component(&button_name);
-                                            format!("#__pending_button?name={}", encoded)
-                                        }
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        {
-                                            format!("#__pending_button?name={button_name}")
-                                        }
-                                    },
-                                    class: if is_admin {
-                                        "block w-full rounded-md bg-gray-300 px-4 py-6 pr-14 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
-                                    } else {
-                                        "block w-full rounded-md bg-gray-300 px-4 py-3 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
-                                    },
-                                    onclick: {
-                                        let button_name = button_name.clone();
-                                        move |event| {
-                                            event.prevent_default();
-                                            selected_button_name.set(Some(button_name.clone()));
-                                        }
-                                    },
-                                    "{button_name}"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(button) = selected_button {
-            {
-                let button_name = button.name.clone();
-                rsx! {
-                    div {
-                        class: "fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
-                        onclick: move |_| {
-                            selected_button_name.set(None);
-                        },
-
-                        div {
-                            class: "modal-window relative max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
-                            style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
-                            onclick: move |event| {
-                                event.stop_propagation();
-                            },
-
-                            button {
-                                class: "absolute right-3 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-2xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
-                                title: "Close",
-                                aria_label: "Close",
-                                onclick: move |_| {
-                                    selected_button_name.set(None);
-                                },
-                                "✕"
-                            }
-
-                            div { class: "mb-4 flex items-center gap-3 pr-12",
-                                h1 { class: "truncate text-2xl font-bold text-gray-900", "{button.name}" }
-
-                                if is_admin {
-                                    button {
-                                        class: "rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100",
-                                        onclick: {
-                                            let button = button.clone();
-                                            move |_| {
-                                                mutation_error.set(None);
-                                                button_editor.set(Some(ButtonEditorState {
-                                                    mode: ButtonEditorMode::Edit {
-                                                        original_name: button.name.clone(),
-                                                    },
-                                                    draft: ButtonDraft {
-                                                        name: button.name.clone(),
-                                                        ..ButtonDraft::default()
-                                                    },
-                                                }));
-                                            }
-                                        },
-                                        "Edit Button"
-                                    }
-
-                                    button {
-                                        class: "rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 transition hover:bg-gray-100",
-                                        onclick: {
-                                            let button = button.clone();
-                                            move |_| {
-                                                mutation_error.set(None);
-                                                row_editor.set(Some(RowEditorState {
-                                                    button_name: button.name.clone(),
-                                                    original_name: None,
-                                                    draft: RowDraft::empty_link(),
-                                                }));
-                                            }
-                                        },
-                                        "+ Row"
-                                    }
-                                }
-                            }
-
-                            if is_admin {
                                 div {
-                                    class: "mb-4 rounded-md border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900",
-                                    "Admin edit mode: use ✎ to edit a row. Grab the ⠿ handle or the row itself and drag it to reorder. The row will highlight while dragging."
+                                    class: "min-w-0",
+                                    h2 {
+                                        class: "text-lg font-semibold tracking-tight text-blue-950",
+                                        "Admin Usage"
+                                    }
+                                    button {
+                                        class: "mt-1 text-left text-sm font-medium text-blue-700 hover:text-blue-900",
+                                        onclick: move |_| admin_help_open.set(!admin_help_open()),
+                                        if admin_help_open() { "Hide admin instructions ▲" } else { "Show admin instructions ▼" }
+                                    }
+                                    if admin_help_open() {
+                                        div { class: "mt-3 max-w-4xl space-y-3 rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-blue-950",
+                                            p { class: "font-semibold", "THIS IS THE ADMIN DASHBOARD (NEW IMPLEMENTATION IM WORKING ON TO ADD MORE USAGE FOR THE LM TEAM BASED ON THE ORIGINAL PYTHON FLASK APP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" }
+                                            p { class: "font-semibold", "Important: changes save immediately. Be careful when editing or deleting items." }
+                                            p { "Buttonboard and the navbar are two separate parts of the dashboard. Use the Buttonboard controls to organize the main buttons and their URL rows; use Manage Navbar to edit the top navigation links and nested submenus." }
+                                            div {
+                                                p { class: "font-semibold", "Buttonboard: add, edit, move, or remove" }
+                                                ul { class: "ml-5 list-disc space-y-1",
+                                                    li { "Use +Button to create a main button and its first URL row. Give it a clear, unique name." }
+                                                    li { "Use the edit controls on a button or URL row to change names, URLs, tags, comments, or other row details. Use Clone when you want a copy before making changes." }
+                                                    li { "Use Move to place a URL row under another button or create a new button for it. Check the destination carefully before confirming." }
+                                                    li { "Delete removes the selected item; deleting a button can remove its rows too. Double-check the selected item before confirming any deletion." }
+                                                }
+                                            }
+                                            div {
+                                                p { class: "font-semibold", "Navbar: add, edit, remove, or nest links" }
+                                                ul { class: "ml-5 list-disc space-y-1",
+                                                    li { "Open Manage Navbar from the top-right of this Admin Usage card. Add a top-level item or add a child under an existing item to create a submenu." }
+                                                    li { "Use Edit to change a label or URL. Use Move to change its parent or order, and Clone to make a copy." }
+                                                    li { "Delete removes that item and its nested children. The fixed Admindash3 brand item is intentionally not editable or movable from the manager." }
+                                                    li { "A dropdown heading can also retain a URL: when nesting under a link that already has a URL, the editor preserves that destination as a child so it is not lost." }
+                                                }
+                                            }
+                                            div {
+                                                p { class: "font-semibold", "What the admin controls do" }
+                                                ul { class: "ml-5 list-disc space-y-1",
+                                                    li { "Autosort controls whether Buttonboard items are saved in alphabetical order. When enabled, manual drag ordering is not available." }
+                                                    li { "Tags lets you manage the available tags; JSON Check validates the dashboard data; History opens Dashboard History, where you can review and restore Buttonboard or navbar snapshots." }
+                                                    li { "Export ZIP downloads a backup archive containing the current JSON files and both history folders (history/buttonboard and history/navbar). It uses the same folder layout as the automatic full backups." }
+                                                    li { "Automatic full backups are created before changes and kept in timestamped folders under backups/dashboard. Dashboard History also keeps individual snapshots so you can revert a specific edit." }
+                                                }
+                                            }
+                                            p { class: "rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900", "Safety tip: before a large cleanup or a series of moves, use Export ZIP. After each change, check the result in the dashboard. If something goes wrong, open History and restore the appropriate snapshot. A restore itself creates a new backup, so you can undo the restore too." }
+                                        }
+                                    }
                                 }
-                            }
 
-                            div { class: "space-y-3",
-                                for (index, row) in button.rows.iter().enumerate() {
-                                    {
-                                        let row_for_editor = row.clone();
-                                        let button_name = button_name.clone();
+                                // Keep the two admin actions in a fixed-width stack.
+                                // Matching width, height, alignment, and typography makes
+                                // the controls feel like one deliberate action group.
+                                // The separate ADMIN pill is intentionally omitted: the
+                                // Admin Usage card is already only rendered for admins.
+                                div {
+                                    class: "flex w-36 shrink-0 flex-col items-stretch gap-2",
 
-                                        match row {
-                                            ButtonRowView::Divider { .. } => {
-                                                let row_editor_button_name = button_name.clone();
-                                                let drag_row_name = row_for_editor.name().to_string();
-                                                let target_row_name = drag_row_name.clone();
+                                    // Navbar management is launched from this card.
+                                    // Navbar.rs still owns the dialog and its editing state.
+                                    button {
+                                        class: "flex h-9 w-full items-center justify-center rounded-md border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-800 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2",
+                                        title: "Add, edit, remove, or nest navbar items (up to five levels).",
+                                        onclick: move |_| {
+                                            *crate::navbar::NAV_MANAGER_OPEN_REQUEST.write() = true;
+                                        },
+                                        "Manage Navbar"
+                                    }
 
-                                                rsx! {
-                                                    div {
-                                                        class: if is_admin {
-                                                            if dragging_index() == Some(index) {
-                                                                "group relative rounded-md border-2 border-blue-400 bg-blue-50 px-4 py-3 shadow-md opacity-70 cursor-grabbing transition"
-                                                            } else {
-                                                                "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 px-4 py-3 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
-                                                            }
-                                                        } else {
-                                                            "group relative rounded-md border border-gray-200 px-4 py-3 transition"
-                                                        },
-                                                        draggable: is_admin,
-                                                        ondragstart: move |_| {
-                                                            dragging_index.set(Some(index));
-                                                            dragging_row_name.set(Some(drag_row_name.clone()));
-                                                        },
-                                                        ondragend: move |_| {
-                                                            dragging_index.set(None);
-                                                            dragging_row_name.set(None);
-                                                        },
-                                                        ondragover: move |event| {
-                                                            event.prevent_default();
-                                                        },
-                                                        ondrop: {
-                                                            let button_name = button_name.clone();
-                                                            move |event| {
-                                                                event.prevent_default();
-                                                                let Some(from_index) = dragging_index() else { return; };
-                                                                dragging_index.set(None);
+                                    button {
+                                        class: "flex h-9 w-full items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-800 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+                                            title: "Download the current JSON files and both history folders in a timestamp-ready backup layout.",
+                                            disabled: mutation_busy(),
+                                            onclick: move |_| async move {
+                                                mutation_error.set(None);
+                                                status_message.set(None);
+                                                mutation_busy.set(true);
 
-                                                                let source_name = dragging_row_name()
-                                                                    .unwrap_or_else(|| "this row".to_string());
-                                                                dragging_row_name.set(None);
-
-                                                                if from_index == index || mutation_busy() { return; }
-
-                                                                reorder_confirmation.set(Some(ReorderConfirmation::Row {
-                                                                    button_name: button_name.clone(),
-                                                                    from_index,
-                                                                    to_index: index,
-                                                                    source_name,
-                                                                    target_name: target_row_name.clone(),
-                                                                }));
-                                                            }
-                                                        },
-                                                        div {
-                                                            class: "my-1 flex items-center gap-3 pr-12",
-                                                            span {
-                                                                class: "h-1 flex-1 rounded-full bg-gray-300",
-                                                            }
-                                                            span {
-                                                                class: "text-xs font-semibold uppercase tracking-wider text-gray-500",
-                                                                "{row_for_editor.name()}"
-                                                            }
-                                                            span {
-                                                                class: "h-1 flex-1 rounded-full bg-gray-300",
-                                                            }
+                                                match export_dashboard_zip_server(ADMIN_AUTH()).await {
+                                                    Ok((bytes, filename)) => {
+                                                        #[cfg(target_arch = "wasm32")]
+                                                        {
+                                                            download_zip_in_browser(bytes, filename);
+                                                            status_message.set(Some(
+                                                                "Dashboard export ZIP downloaded.".to_string(),
+                                                            ));
                                                         }
 
-                                                        if is_admin {
-                                                            // Keep both controls in one top-right row. Separate absolute
-                                                            // top/bottom positions caused them to collide on short rows.
-                                                            div {
-                                                                class: "absolute right-3 top-2 z-10 flex items-center gap-1",
-                                                                button {
-                                                                    class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                                    title: "Edit divider row",
-                                                                    onclick: move |event| {
-                                                                        event.stop_propagation();
-                                                                        event.prevent_default();
-                                                                        mutation_error.set(None);
-                                                                        row_editor.set(Some(RowEditorState {
-                                                                            button_name: row_editor_button_name.clone(),
-                                                                            original_name: Some(row_for_editor.name().to_string()),
-                                                                            draft: RowDraft::from_row(&row_for_editor),
-                                                                        }));
-                                                                    },
-                                                                    "✎"
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        {
+                                                            let _ = (bytes, filename);
+                                                            status_message.set(Some(
+                                                                "Dashboard export created.".to_string(),
+                                                            ));
+                                                        }
+                                                    }
+                                                    Err(error) => mutation_error.set(Some(error.to_string())),
+                                                }
+
+                                                mutation_busy.set(false);
+                                            },
+                                            "⇩ Export ZIP"
+    //                                    }
+                                    }
+                                }
+                            }
+                        }
+
+                        div {
+                            class: "grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5",
+
+                            // ---------------------------------------------------------
+                            // +Button
+                            // ---------------------------------------------------------
+                            div {
+                                class: "flex h-full flex-col rounded-lg border border-blue-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                button {
+                                    class: "w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                    title: "Create a new main button and its first URL row.",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| {
+                                        mutation_error.set(None);
+                                        button_editor.set(Some(ButtonEditorState {
+                                            mode: ButtonEditorMode::Create,
+                                            draft: ButtonDraft::default(),
+                                        }));
+                                    },
+                                    "+Button"
+                                }
+                                p {
+                                    class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                    "Create a new main dashboard button. It starts with its first URL row."
+                                }
+                            }
+
+                            // ---------------------------------------------------------
+                            // +Tags
+                            // ---------------------------------------------------------
+                            div {
+                                class: "flex h-full flex-col rounded-lg border border-indigo-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                button {
+                                    class: "w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                    title: "Open the global tag manager to add, remove, and save managed tags.",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| {
+                                        mutation_error.set(None);
+                                        tag_manager_draft.set(available_tags_for_manager.clone());
+                                        new_tag.set(String::new());
+                                        tag_manager_open.set(true);
+                                    },
+                                    "+Tags"
+                                }
+                                p {
+                                    class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                    "Manage the global tags used by URL rows. Add, remove, and save tags here."
+                                }
+                            }
+
+                            // ---------------------------------------------------------
+                            // +JSON Check
+                            // ---------------------------------------------------------
+                            div {
+                                class: "flex h-full flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                button {
+                                    class: "w-full rounded-md bg-slate-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                    title: "Validate data_buttons.v3.json with the dashboard parser.",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| async move {
+                                        mutation_error.set(None);
+                                        status_message.set(None);
+                                        mutation_busy.set(true);
+
+                                        match check_json_server(ADMIN_AUTH()).await {
+                                            Ok(()) => {
+                                                status_message.set(Some(
+                                                    "Dashboard JSON is valid.".to_string()
+                                                ));
+                                            }
+                                            Err(error) => {
+                                                mutation_error.set(Some(error.to_string()));
+                                            }
+                                        }
+
+                                        mutation_busy.set(false);
+                                    },
+                                    "+JSON Check"
+                                }
+                                p {
+                                    class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                    "Check the dashboard JSON using the same parser used when the dashboard loads."
+                                }
+                            }
+
+                            // ---------------------------------------------------------
+                            // +History
+                            // ---------------------------------------------------------
+                            div {
+                                class: "flex h-full flex-col rounded-lg border border-purple-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                button {
+                                    class: "w-full rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60",
+                                    title: "Open the dashboard history page.",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| {
+                                        mutation_error.set(None);
+                                        status_message.set(None);
+                                        *HISTORY_PAGE.write() = true;
+                                    },
+                                    "+History"
+                                }
+                                p {
+                                    class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                    "View saved JSON snapshots and use the history tools to inspect or restore earlier versions."
+                                }
+                            }
+
+                            // ---------------------------------------------------------
+                            // +Autosort
+                            // ---------------------------------------------------------
+                            div {
+                                class: "flex h-full flex-col rounded-lg border border-emerald-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                                button {
+                                    class: if autosort_enabled() {
+                                        "w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    } else {
+                                        "w-full rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    },
+                                    title: "Toggle system-wide alphabetical sorting of the main button cards.",
+                                    disabled: mutation_busy(),
+                                    onclick: move |_| async move {
+                                        let enabled = !autosort_enabled();
+                                        autosort_enabled.set(enabled);
+
+                                        match set_autosort_server(ADMIN_AUTH(), enabled).await {
+                                            Ok(()) => {
+                                                status_message.set(Some(format!(
+                                                    "Autosort is now {}.",
+                                                    if enabled { "ON" } else { "OFF" }
+                                                )));
+                                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                                            }
+                                            Err(error) => {
+                                                autosort_enabled.set(!enabled);
+                                                mutation_error.set(Some(error.to_string()));
+                                            }
+                                        }
+                                    },
+                                    if autosort_enabled() { "+Autosort ON" } else { "+Autosort OFF" }
+                                }
+                                p {
+                                    class: "mt-2 flex-1 text-xs leading-5 text-gray-600",
+                                    "Turn alphabetical sorting of the main button cards on or off. This is system-wide and survives F5."
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(message) = status_message() {
+                    div {
+                        class: "mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800",
+                        "{message}"
+                    }
+                }
+
+                if let Some(message) = mutation_error() {
+                    div {
+                        class: "mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700",
+                        "{message}"
+                    }
+                }
+
+                div { class: "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5",
+                    for (index, button) in buttons_to_display.iter().enumerate() {
+                        {
+                            let button_name = button.name.clone();
+                            let drag_button_name = button_name.clone();
+                            let drop_button_name = button_name.clone();
+                            let button_for_editor = button.clone();
+
+                            rsx! {
+                                div {
+                                    class: if is_admin && !autosort_enabled() {
+                                        if dragging_button_index() == Some(index) {
+                                            "group relative cursor-grabbing opacity-70 transition"
+                                        } else {
+                                            "group relative cursor-grab transition"
+                                        }
+                                    } else {
+                                        "group relative"
+                                    },
+                                    draggable: is_admin && !autosort_enabled(),
+                                    ondragstart: move |_| {
+                                        if is_admin && !autosort_enabled() {
+                                            dragging_button_index.set(Some(index));
+                                            dragging_button_name.set(Some(drag_button_name.clone()));
+                                        }
+                                    },
+                                    ondragend: move |_| {
+                                        dragging_button_index.set(None);
+                                        dragging_button_name.set(None);
+                                    },
+                                    ondragover: move |event| {
+                                        if is_admin && !autosort_enabled() {
+                                            event.prevent_default();
+                                        }
+                                    },
+                                    ondrop: move |event| {
+                                        if !is_admin || autosort_enabled() {
+                                            return;
+                                        }
+
+                                        event.prevent_default();
+
+                                        let Some(from_index) = dragging_button_index() else {
+                                            return;
+                                        };
+
+                                        dragging_button_index.set(None);
+
+                                        let source_name = dragging_button_name()
+                                            .unwrap_or_else(|| "this button".to_string());
+                                        dragging_button_name.set(None);
+
+                                        if from_index == index || mutation_busy() {
+                                            return;
+                                        }
+
+                                        reorder_confirmation.set(Some(ReorderConfirmation::Button {
+                                            from_index,
+                                            to_index: index,
+                                            source_name,
+                                            target_name: drop_button_name.clone(),
+                                        }));
+                                    },
+
+                                    // Keep the admin controls together in one small
+                                    // row at the card's top-right. Previously each
+                                    // control had its own absolute position, which
+                                    // could overlap depending on card/text layout.
+                                    if is_admin {
+                                        div {
+                                            class: "absolute right-2 top-2 z-10 flex items-center gap-1",
+                                            button {
+                                                class: "rounded-full bg-white/95 px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-white",
+                                                title: "Edit this button",
+                                                onclick: move |event| {
+                                                    event.stop_propagation();
+                                                    event.prevent_default();
+                                                    mutation_error.set(None);
+                                                    button_editor.set(Some(ButtonEditorState {
+                                                        mode: ButtonEditorMode::Edit {
+                                                            original_name: button_for_editor.name.clone(),
+                                                        },
+                                                        draft: ButtonDraft {
+                                                            name: button_for_editor.name.clone(),
+                                                            ..ButtonDraft::default()
+                                                        },
+                                                    }));
+                                                },
+                                                "✎"
+                                            }
+
+                                            if !autosort_enabled() {
+                                                div {
+                                                    class: "rounded-full bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800 shadow",
+                                                    title: "Drag this main button to another position.",
+                                                    "⠿"
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    a {
+                                        href: {
+                                            #[cfg(target_arch = "wasm32")]
+                                            {
+                                                let encoded = js_sys::encode_uri_component(&button_name);
+                                                format!("#__pending_button?name={}", encoded)
+                                            }
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            {
+                                                format!("#__pending_button?name={button_name}")
+                                            }
+                                        },
+                                        class: if is_admin {
+                                            "block w-full rounded-md bg-gray-300 px-4 py-6 pr-14 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
+                                        } else {
+                                            "block w-full rounded-md bg-gray-300 px-4 py-3 text-center font-medium text-gray-800 shadow-sm transition hover:scale-105 hover:bg-gray-400 hover:shadow-md active:scale-95 truncate overflow-hidden whitespace-nowrap"
+                                        },
+                                        onclick: {
+                                            let button_name = button_name.clone();
+                                            move |event| {
+                                                event.prevent_default();
+                                                selected_button_name.set(Some(button_name.clone()));
+                                            }
+                                        },
+                                        "{button_name}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(button) = selected_button {
+                {
+                    let button_name = button.name.clone();
+                    rsx! {
+                        div {
+                            class: "fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+                            onclick: move |_| {
+                                selected_button_name.set(None);
+                            },
+
+                            div {
+                                class: "modal-window relative max-h-[80vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-4 sm:p-6 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
+                                style: "resize: both; min-width: min(18rem, 90vw); min-height: 10rem; max-height: 90vh;",
+                                onclick: move |event| {
+                                    event.stop_propagation();
+                                },
+
+                                button {
+                                    class: "absolute right-3 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-2xl leading-none text-red-500 shadow-sm transition hover:bg-red-50 hover:text-red-700",
+                                    title: "Close",
+                                    aria_label: "Close",
+                                    onclick: move |_| {
+                                        selected_button_name.set(None);
+                                    },
+                                    "✕"
+                                }
+
+                                div { class: "mb-4 flex items-center gap-3 pr-12",
+                                    h1 { class: "truncate text-2xl font-bold text-gray-900", "{button.name}" }
+
+                                    if is_admin {
+                                        button {
+                                            class: "rounded-md border border-blue-300 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100",
+                                            onclick: {
+                                                let button = button.clone();
+                                                move |_| {
+                                                    mutation_error.set(None);
+                                                    button_editor.set(Some(ButtonEditorState {
+                                                        mode: ButtonEditorMode::Edit {
+                                                            original_name: button.name.clone(),
+                                                        },
+                                                        draft: ButtonDraft {
+                                                            name: button.name.clone(),
+                                                            ..ButtonDraft::default()
+                                                        },
+                                                    }));
+                                                }
+                                            },
+                                            "Edit Button"
+                                        }
+
+                                        button {
+                                            class: "rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 transition hover:bg-gray-100",
+                                            onclick: {
+                                                let button = button.clone();
+                                                move |_| {
+                                                    mutation_error.set(None);
+                                                    row_editor.set(Some(RowEditorState {
+                                                        button_name: button.name.clone(),
+                                                        original_name: None,
+                                                        draft: RowDraft::empty_link(),
+                                                    }));
+                                                }
+                                            },
+                                            "+ Row"
+                                        }
+                                    }
+                                }
+
+                                if is_admin {
+                                    div {
+                                        class: "mb-4 rounded-md border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900",
+                                        "Admin edit mode: use ✎ to edit a row. Grab the ⠿ handle or the row itself and drag it to reorder. The row will highlight while dragging."
+                                    }
+                                }
+
+                                div { class: "space-y-3",
+                                    for (index, row) in button.rows.iter().enumerate() {
+                                        {
+                                            let row_for_editor = row.clone();
+                                            let button_name = button_name.clone();
+
+                                            match row {
+                                                ButtonRowView::Divider { .. } => {
+                                                    let row_editor_button_name = button_name.clone();
+                                                    let drag_row_name = row_for_editor.name().to_string();
+                                                    let target_row_name = drag_row_name.clone();
+
+                                                    rsx! {
+                                                        div {
+                                                            class: if is_admin {
+                                                                if dragging_index() == Some(index) {
+                                                                    "group relative rounded-md border-2 border-blue-400 bg-blue-50 px-4 py-3 shadow-md opacity-70 cursor-grabbing transition"
+                                                                } else {
+                                                                    "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 px-4 py-3 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
                                                                 }
+                                                            } else {
+                                                                "group relative rounded-md border border-gray-200 px-4 py-3 transition"
+                                                            },
+                                                            draggable: is_admin,
+                                                            ondragstart: move |_| {
+                                                                dragging_index.set(Some(index));
+                                                                dragging_row_name.set(Some(drag_row_name.clone()));
+                                                            },
+                                                            ondragend: move |_| {
+                                                                dragging_index.set(None);
+                                                                dragging_row_name.set(None);
+                                                            },
+                                                            ondragover: move |event| {
+                                                                event.prevent_default();
+                                                            },
+                                                            ondrop: {
+                                                                let button_name = button_name.clone();
+                                                                move |event| {
+                                                                    event.prevent_default();
+                                                                    let Some(from_index) = dragging_index() else { return; };
+                                                                    dragging_index.set(None);
+
+                                                                    let source_name = dragging_row_name()
+                                                                        .unwrap_or_else(|| "this row".to_string());
+                                                                    dragging_row_name.set(None);
+
+                                                                    if from_index == index || mutation_busy() { return; }
+
+                                                                    reorder_confirmation.set(Some(ReorderConfirmation::Row {
+                                                                        button_name: button_name.clone(),
+                                                                        from_index,
+                                                                        to_index: index,
+                                                                        source_name,
+                                                                        target_name: target_row_name.clone(),
+                                                                    }));
+                                                                }
+                                                            },
+                                                            div {
+                                                                class: "my-1 flex items-center gap-3 pr-12",
+                                                                span {
+                                                                    class: "h-1 flex-1 rounded-full bg-gray-300",
+                                                                }
+                                                                span {
+                                                                    class: "text-xs font-semibold uppercase tracking-wider text-gray-500",
+                                                                    "{row_for_editor.name()}"
+                                                                }
+                                                                span {
+                                                                    class: "h-1 flex-1 rounded-full bg-gray-300",
+                                                                }
+                                                            }
+
+                                                            if is_admin {
+                                                                // Keep both controls in one top-right row. Separate absolute
+                                                                // top/bottom positions caused them to collide on short rows.
                                                                 div {
-                                                                    class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
-                                                                    title: "Drag divider to reorder",
-                                                                    "⠿"
+                                                                    class: "absolute right-3 top-2 z-10 flex items-center gap-1",
+                                                                    button {
+                                                                        class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                        title: "Edit divider row",
+                                                                        onclick: move |event| {
+                                                                            event.stop_propagation();
+                                                                            event.prevent_default();
+                                                                            mutation_error.set(None);
+                                                                            row_editor.set(Some(RowEditorState {
+                                                                                button_name: row_editor_button_name.clone(),
+                                                                                original_name: Some(row_for_editor.name().to_string()),
+                                                                                draft: RowDraft::from_row(&row_for_editor),
+                                                                            }));
+                                                                        },
+                                                                        "✎"
+                                                                    }
+                                                                    div {
+                                                                        class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
+                                                                        title: "Drag divider to reorder",
+                                                                        "⠿"
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                }
-                                            },
-                                            ButtonRowView::Link {
-                                                name,
-                                                url,
-                                                hashtags,
-                                                comments,
-                                                hashtag_tokens,
-                                                secret_text,
-                                                has_secret,
-                                            } => {
-                                                let row_editor_button_name = button_name.clone();
-                                                let drag_row_name = row_for_editor.name().to_string();
-                                                let target_row_name = drag_row_name.clone();
+                                                },
+                                                ButtonRowView::Link {
+                                                    name,
+                                                    url,
+                                                    hashtags,
+                                                    comments,
+                                                    hashtag_tokens,
+                                                    secret_text,
+                                                    has_secret,
+                                                } => {
+                                                    let row_editor_button_name = button_name.clone();
+                                                    let drag_row_name = row_for_editor.name().to_string();
+                                                    let target_row_name = drag_row_name.clone();
 
-                                                rsx! {
-                                                    div {
-                                                        class: if is_admin {
-                                                            if dragging_index() == Some(index) {
-                                                                "group relative rounded-md border-2 border-blue-400 bg-blue-50 p-4 shadow-md opacity-70 cursor-grabbing transition"
+                                                    rsx! {
+                                                        div {
+                                                            class: if is_admin {
+                                                                if dragging_index() == Some(index) {
+                                                                    "group relative rounded-md border-2 border-blue-400 bg-blue-50 p-4 shadow-md opacity-70 cursor-grabbing transition"
+                                                                } else {
+                                                                    "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 p-4 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
+                                                                }
                                                             } else {
-                                                                "group relative rounded-md border border-dashed border-blue-300 bg-blue-50/30 p-4 cursor-grab transition hover:border-blue-400 hover:bg-blue-50"
-                                                            }
-                                                        } else {
-                                                            "group relative rounded-md border border-gray-200 p-4 transition hover:border-gray-300 hover:bg-gray-50"
-                                                        },
-                                                        draggable: is_admin,
-                                                        ondragstart: move |_| {
-                                                            dragging_index.set(Some(index));
-                                                            dragging_row_name.set(Some(drag_row_name.clone()));
-                                                        },
-                                                        ondragend: move |_| {
-                                                            dragging_index.set(None);
-                                                            dragging_row_name.set(None);
-                                                        },
-                                                        ondragover: move |event| {
-                                                            event.prevent_default();
-                                                        },
-                                                        ondrop: {
-                                                            let button_name = button_name.clone();
-                                                            move |event| {
-                                                                event.prevent_default();
-                                                                let Some(from_index) = dragging_index() else { return; };
+                                                                "group relative rounded-md border border-gray-200 p-4 transition hover:border-gray-300 hover:bg-gray-50"
+                                                            },
+                                                            draggable: is_admin,
+                                                            ondragstart: move |_| {
+                                                                dragging_index.set(Some(index));
+                                                                dragging_row_name.set(Some(drag_row_name.clone()));
+                                                            },
+                                                            ondragend: move |_| {
                                                                 dragging_index.set(None);
-
-                                                                let source_name = dragging_row_name()
-                                                                    .unwrap_or_else(|| "this row".to_string());
                                                                 dragging_row_name.set(None);
+                                                            },
+                                                            ondragover: move |event| {
+                                                                event.prevent_default();
+                                                            },
+                                                            ondrop: {
+                                                                let button_name = button_name.clone();
+                                                                move |event| {
+                                                                    event.prevent_default();
+                                                                    let Some(from_index) = dragging_index() else { return; };
+                                                                    dragging_index.set(None);
 
-                                                                if from_index == index || mutation_busy() { return; }
+                                                                    let source_name = dragging_row_name()
+                                                                        .unwrap_or_else(|| "this row".to_string());
+                                                                    dragging_row_name.set(None);
 
-                                                                reorder_confirmation.set(Some(ReorderConfirmation::Row {
-                                                                    button_name: button_name.clone(),
-                                                                    from_index,
-                                                                    to_index: index,
-                                                                    source_name,
-                                                                    target_name: target_row_name.clone(),
-                                                                }));
-                                                            }
-                                                        },
+                                                                    if from_index == index || mutation_busy() { return; }
 
-                                                        if is_admin {
-                                                            // Anchor the edit and drag controls together instead of
-                                                            // centering the pencil vertically; long and short rows now
-                                                            // use the same predictable control position.
-                                                            div {
-                                                                class: "absolute right-3 top-2 z-10 flex items-center gap-1",
-                                                                button {
-                                                                    class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
-                                                                    title: "Edit URL row",
-                                                                    onclick: move |event| {
-                                                                        event.stop_propagation();
-                                                                        event.prevent_default();
-                                                                        mutation_error.set(None);
-                                                                        row_editor.set(Some(RowEditorState {
-                                                                            button_name: row_editor_button_name.clone(),
-                                                                            original_name: Some(row_for_editor.name().to_string()),
-                                                                            draft: RowDraft::from_row(&row_for_editor),
-                                                                        }));
-                                                                    },
-                                                                    "✎"
+                                                                    reorder_confirmation.set(Some(ReorderConfirmation::Row {
+                                                                        button_name: button_name.clone(),
+                                                                        from_index,
+                                                                        to_index: index,
+                                                                        source_name,
+                                                                        target_name: target_row_name.clone(),
+                                                                    }));
                                                                 }
+                                                            },
+
+                                                            if is_admin {
+                                                                // Anchor the edit and drag controls together instead of
+                                                                // centering the pencil vertically; long and short rows now
+                                                                // use the same predictable control position.
                                                                 div {
-                                                                    class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
-                                                                    title: "Drag URL row to reorder",
-                                                                    span { class: "text-base leading-none", "⠿" }
-                                                                }
-                                                            }
-                                                        }
-
-                                                        a {
-                                                            class: "block rounded-md pr-10 hover:text-blue-700",
-                                                            href: url.clone(),
-                                                            target: "_blank",
-
-                                                            div { class: "font-medium text-gray-900 break-words", "{name}" }
-                                                            div { class: "mt-1 text-sm text-blue-700 break-all", "{url}" }
-
-                                                            if !comments.trim().is_empty() {
-                                                                div {
-                                                                    class: "mt-1 truncate text-xs text-gray-500",
-                                                                    title: comments.clone(),
-                                                                    "{comments}"
-                                                                }
-                                                            }
-
-                                                            if !hashtags.is_empty() {
-                                                                div { class: "mt-3 flex flex-wrap gap-2",
-                                                                    for tag in hashtag_tokens.iter() {
-                                                                        span { class: "rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700", "{tag}" }
+                                                                    class: "absolute right-3 top-2 z-10 flex items-center gap-1",
+                                                                    button {
+                                                                        class: "rounded-full bg-white px-2 py-1 text-xs text-gray-700 shadow transition hover:bg-gray-50",
+                                                                        title: "Edit URL row",
+                                                                        onclick: move |event| {
+                                                                            event.stop_propagation();
+                                                                            event.prevent_default();
+                                                                            mutation_error.set(None);
+                                                                            row_editor.set(Some(RowEditorState {
+                                                                                button_name: row_editor_button_name.clone(),
+                                                                                original_name: Some(row_for_editor.name().to_string()),
+                                                                                draft: RowDraft::from_row(&row_for_editor),
+                                                                            }));
+                                                                        },
+                                                                        "✎"
+                                                                    }
+                                                                    div {
+                                                                        class: "rounded-md bg-blue-100 px-2 py-1 text-sm font-medium text-blue-800",
+                                                                        title: "Drag URL row to reorder",
+                                                                        span { class: "text-base leading-none", "⠿" }
                                                                     }
                                                                 }
                                                             }
 
-                                                            if *has_secret {
-                                                                div { class: "mt-3 text-sm text-gray-700",
-                                                                    if let Some(secret_text) = secret_text {
-                                                                        span { class: "rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900 break-all", "{secret_text}" }
-                                                                    } else {
-                                                                        span { class: "inline-flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-amber-700",
-                                                                            span { "🔑" }
-                                                                            span { "Secret hidden" }
+                                                            a {
+                                                                class: "block rounded-md pr-10 hover:text-blue-700",
+                                                                href: url.clone(),
+                                                                target: "_blank",
+
+                                                                div { class: "font-medium text-gray-900 break-words", "{name}" }
+                                                                div { class: "mt-1 text-sm text-blue-700 break-all", "{url}" }
+
+                                                                if !comments.trim().is_empty() {
+                                                                    div {
+                                                                        class: "mt-1 truncate text-xs text-gray-500",
+                                                                        title: comments.clone(),
+                                                                        "{comments}"
+                                                                    }
+                                                                }
+
+                                                                if !hashtags.is_empty() {
+                                                                    div { class: "mt-3 flex flex-wrap gap-2",
+                                                                        for tag in hashtag_tokens.iter() {
+                                                                            span { class: "rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700", "{tag}" }
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                if *has_secret {
+                                                                    div { class: "mt-3 text-sm text-gray-700",
+                                                                        if let Some(secret_text) = secret_text {
+                                                                            span { class: "rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900 break-all", "{secret_text}" }
+                                                                        } else {
+                                                                            span { class: "inline-flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-amber-700",
+                                                                                span { "🔑" }
+                                                                                span { "Secret hidden" }
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                }
-                                            },
+                                                },
+                                            }
                                         }
                                     }
                                 }
@@ -1048,610 +1070,609 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                     }
                 }
             }
-        }
 
-        if tag_manager_open() {
-            TagManagerModal {
-                tags: tag_manager_draft(),
-                tag_usage_counts: tag_usage_counts.clone(),
-                new_tag: new_tag(),
-                busy: mutation_busy(),
-                error_message: mutation_error(),
-                on_close: move |_| {
-                    tag_manager_open.set(false);
-                    mutation_error.set(None);
-                },
-                on_new_tag_input: move |value: String| new_tag.set(value),
-                on_add: move |_| {
-                    let clean = normalize_tag_for_ui(&new_tag());
-                    if clean.chars().count() >= 4 {
-                        let mut tags = tag_manager_draft();
-                        if !tags.iter().any(|tag| tag.eq_ignore_ascii_case(&clean)) {
-                            tags.push(clean);
-                            tags.sort_by_key(|tag| tag.to_lowercase());
-                            tag_manager_draft.set(tags);
-                            new_tag.set(String::new());
-                            mutation_error.set(None);
-                        } else {
-                            mutation_error.set(Some("That tag is already in the list.".to_string()));
-                        }
-                    } else {
-                        mutation_error.set(Some("Tags must contain at least 4 characters.".to_string()));
-                    }
-                },
-                on_remove: move |tag: String| {
-                    let mut tags = tag_manager_draft();
-                    tags.retain(|existing| existing != &tag);
-                    tag_manager_draft.set(tags);
-                },
-                on_save: move |_| async move {
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-                    let result = save_tags_server(ADMIN_AUTH(), tag_manager_draft()).await;
-                    mutation_busy.set(false);
-                    match result {
-                        Ok(()) => {
-                            tag_manager_open.set(false);
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => mutation_error.set(Some(error.to_string())),
-                    }
-                },
-            }
-        }
-
-        // ---------------------------------------------------------------------
-        // DRAG/DROP CONFIRMATION MODAL
-        // ---------------------------------------------------------------------
-        // This replaces the browser-native confirm popup. Escape is also
-        // handled by the existing global keydown handler above.
-        if let Some(confirmation) = reorder_confirmation() {
-            ReorderConfirmationModal {
-                confirmation: confirmation.clone(),
-                busy: mutation_busy(),
-                on_cancel: move |_| {
-                    reorder_confirmation.set(None);
-                },
-                on_confirm: move |_| {
-                    let Some(confirmation) = reorder_confirmation() else {
-                        return;
-                    };
-
-                    reorder_confirmation.set(None);
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-                    status_message.set(None);
-
-                    spawn(async move {
-                        let result = match confirmation {
-                            ReorderConfirmation::Button {
-                                from_index,
-                                to_index,
-                                ..
-                            } => reorder_buttons_server(
-                                ADMIN_AUTH(),
-                                from_index,
-                                to_index,
-                            )
-                            .await,
-                            ReorderConfirmation::Row {
-                                button_name,
-                                from_index,
-                                to_index,
-                                ..
-                            } => reorder_rows_server(
-                                ADMIN_AUTH(),
-                                button_name,
-                                from_index,
-                                to_index,
-                            )
-                            .await,
-                        };
-
-                        mutation_busy.set(false);
-
-                        match result {
-                            Ok(()) => *DASHBOARD_REFRESH_KEY.write() += 1,
-                            Err(error) => mutation_error.set(Some(error.to_string())),
-                        }
-                    });
-                },
-            }
-        }
-
-        if let Some(editor) = button_editor() {
-            ButtonEditorModal {
-                editor: editor.clone(),
-                busy: mutation_busy(),
-                error_message: mutation_error(),
-                on_close: move |_| {
-                    button_editor.set(None);
-                    mutation_error.set(None);
-                },
-                on_name_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.name = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_first_row_name_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_name = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_first_row_url_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_url = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                available_tags: payload.available_tags.clone(),
-                on_add_first_row_tag: move |tag: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_hashtags = add_tag_to_text(&current.draft.first_row_hashtags, &tag);
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_first_row_hashtags_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_hashtags = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_first_row_comments_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_comments = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_first_row_secrets_input: move |value: String| {
-                    if let Some(mut current) = button_editor() {
-                        current.draft.first_row_secrets = value;
-                        button_editor.set(Some(current));
-                    }
-                },
-                on_save: move |_| async move {
-                    let Some(editor) = button_editor() else {
-                        return;
-                    };
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-
-                    let credentials = ADMIN_AUTH();
-                    let result = match editor.mode {
-                        ButtonEditorMode::Create => {
-                            create_button_server(
-                                credentials,
-                                ButtonCreateInput {
-                                    name: editor.draft.name.clone(),
-                                    first_row: ButtonRowInput {
-                                        original_name: None,
-                                        name: editor.draft.first_row_name.clone(),
-                                        kind: RowKind::Link,
-                                        url: editor.draft.first_row_url.clone(),
-                                        hashtags: editor.draft.first_row_hashtags.clone(),
-                                        comments: editor.draft.first_row_comments.clone(),
-                                        secrets: editor.draft.first_row_secrets.clone(),
-                                    },
-                                },
-                            )
-                            .await
-                        }
-                        ButtonEditorMode::Edit { original_name } => {
-                            rename_button_server(
-                                credentials,
-                                ButtonRenameInput {
-                                    original_name,
-                                    name: editor.draft.name.clone(),
-                                },
-                            ).await
-                        }
-                        ButtonEditorMode::MoveToCreate { source_button_name, row_name } => {
-                            // Create the destination button using the normal button-creation
-                            // path, with the URL row already filled in by the row editor.
-                            //
-                            // The previous implementation called move_row_server with an
-                            // empty destination name and a separate new-button name. That
-                            // delegated the whole operation to the special move-to-new-button
-                            // path, which could move the row without reliably creating the
-                            // destination button.
-                            //
-                            // Create the new button first so the URL is safely stored there.
-                            // Only after creation succeeds do we remove the original row.
-                            // This ordering is deliberate: if creation fails, the original
-                            // URL remains untouched.
-                            let create_result = create_button_server(
-                                credentials,
-                                ButtonCreateInput {
-                                    name: editor.draft.name.clone(),
-                                    first_row: ButtonRowInput {
-                                        original_name: None,
-                                        name: editor.draft.first_row_name.clone(),
-                                        kind: RowKind::Link,
-                                        url: editor.draft.first_row_url.clone(),
-                                        hashtags: editor.draft.first_row_hashtags.clone(),
-                                        comments: editor.draft.first_row_comments.clone(),
-                                        secrets: editor.draft.first_row_secrets.clone(),
-                                    },
-                                },
-                            )
-                            .await;
-
-                            match create_result {
-                                Ok(()) => {
-                                    // The destination now exists and contains a copy of the
-                                    // complete row. Remove the source copy to finish the move.
-                                    delete_row_server(
-                                        ADMIN_AUTH(),
-                                        source_button_name,
-                                        row_name,
-                                    )
-                                    .await
-                                }
-                                Err(error) => Err(error),
-                            }
-                        }
-                    };
-
-                    mutation_busy.set(false);
-
-                    match result {
-                        Ok(()) => {
-                            let saved_button_name = editor.draft.name.clone();
-
-                            button_editor.set(None);
-                            mutation_error.set(None);
-                            selected_button_name.set(Some(saved_button_name));
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
-                        }
-                    }
-                },
-                on_clone: move |_| async move {
-                    let Some(editor) = button_editor() else {
-                        return;
-                    };
-
-                    let ButtonEditorMode::Edit { original_name } = editor.mode else {
-                        return;
-                    };
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-
-                    let result = clone_button_server(ADMIN_AUTH(), original_name).await;
-
-                    mutation_busy.set(false);
-
-                    match result {
-                        Ok(cloned_name) => {
-                            button_editor.set(None);
-                            mutation_error.set(None);
-                            status_message.set(Some(format!(
-                                "Cloned button as '{cloned_name}'."
-                            )));
-                            selected_button_name.set(Some(cloned_name));
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
-                        }
-                    }
-                },
-                on_delete: move |_| async move {
-                    let Some(editor) = button_editor() else {
-                        return;
-                    };
-
-                    let ButtonEditorMode::Edit { original_name } = editor.mode else {
-                        return;
-                    };
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-
-                    let result = delete_button_server(ADMIN_AUTH(), original_name.clone()).await;
-
-                    mutation_busy.set(false);
-
-                    match result {
-                        Ok(()) => {
-                            if selected_button_name() == Some(original_name.clone()) {
-                                selected_button_name.set(None);
-                            }
-                            button_editor.set(None);
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
-                        }
-                    }
-                },
-            }
-        }
-
-        // Only show one modal at a time. When moving a URL into a new button,
-        // the click handler sets `button_editor` and clears `row_editor` in the
-        // same event. This guard also prevents a still-rendering row modal from
-        // sitting on top of the new Create Button modal during that transition.
-        if button_editor().is_none() {
-            if let Some(editor) = row_editor() {
-                RowEditorModal {
-                editor: editor.clone(),
-                busy: mutation_busy(),
-                error_message: mutation_error(),
-                on_close: move |_| {
-                    row_editor.set(None);
-                    mutation_error.set(None);
-                },
-                on_kind_change: move |kind: RowKind| {
-                    if let Some(mut current) = row_editor() {
-                        // When switching a row to Divider, choose the first
-                        // DIVIDER number not already used by this button.
-                        // The parser requires divider names to contain uppercase
-                        // "DIVIDER", so we generate that exact spelling.
-                        if kind == RowKind::Divider && current.draft.kind != RowKind::Divider {
-                            let existing_rows = payload_for_divider_names.buttons
-                                .iter()
-                                .find(|button| button.name == current.button_name)
-                                .map(|button| button.rows.as_slice())
-                                .unwrap_or(&[]);
-                            current.draft.name = next_divider_name(existing_rows);
-                        }
-
-                        current.draft.kind = kind;
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_name_input: move |value: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.name = value;
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_url_input: move |value: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.url = value;
-                        row_editor.set(Some(current));
-                    }
-                },
-                available_tags: payload.available_tags.clone(),
-                source_is_only_row: payload.buttons.iter()
-                    .find(|button| button.name == editor.button_name)
-                    .map(|button| button.rows.len() <= 1)
-                    .unwrap_or(false),
-                available_buttons: {
-                    let mut names: Vec<String> = payload.buttons.iter()
-                        .map(|button| button.name.clone())
-                        .collect();
-                    names.sort_by_key(|name| name.to_lowercase());
-                    names
-                },
-                on_move: move |(destination, new_button_name): (String, Option<String>)| {
-                    let Some(current_row_editor) = row_editor() else {
-                        return;
-                    };
-                    let Some(original_name) = current_row_editor.original_name.clone() else {
-                        return;
-                    };
-                    let source_button = current_row_editor.button_name.clone();
-
-                    // Moving the only row would leave an invalid empty button. In
-                    // that special case, open the existing Edit Button modal so the
-                    // user can rename this button instead; the URL remains intact.
-                    let source_row_count = payload_for_move.buttons.iter()
-                        .find(|button| button.name == source_button)
-                        .map(|button| button.rows.len())
-                        .unwrap_or(0);
-                    if source_row_count <= 1 {
-                        // Close the row editor first, then open the button editor.
-                        // This avoids a render where both modal states are active.
-                        row_editor.set(None);
+            if tag_manager_open() {
+                TagManagerModal {
+                    tags: tag_manager_draft(),
+                    tag_usage_counts: tag_usage_counts.clone(),
+                    new_tag: new_tag(),
+                    busy: mutation_busy(),
+                    error_message: mutation_error(),
+                    on_close: move |_| {
+                        tag_manager_open.set(false);
                         mutation_error.set(None);
-                        button_editor.set(Some(ButtonEditorState {
-                            mode: ButtonEditorMode::Edit { original_name: source_button.clone() },
-                            draft: ButtonDraft {
-                                name: source_button,
-                                ..ButtonDraft::default()
-                            },
-                        }));
-                        return;
-                    }
-
-                    // Creating a destination uses the regular Create Button modal,
-                    // prefilled with the complete URL row. The row is not removed
-                    // from its source until the user confirms that modal.
-                    // Treat the explicit sentinel (and the empty destination used by
-                    // the create-new-button action) as a request to open the modal.
-                    // Do not rely only on `new_button_name`: the row modal's event
-                    // payload can vary while the destination select is changing, and
-                    // falling through would incorrectly move the URL to an existing
-                    // button without asking for a new button name.
-                    let wants_new_button = new_button_name.is_some()
-                        || destination == "__new_button__"
-                        || destination.is_empty();
-
-                    if wants_new_button {
-                        // Build the destination editor state before opening it.
-                        // Clear the row modal first so its state cannot mask or
-                        // interfere with the new-button modal during this update.
-                        let next_button_editor = ButtonEditorState {
-                            mode: ButtonEditorMode::MoveToCreate {
-                                source_button_name: source_button,
-                                row_name: original_name,
-                            },
-                            draft: ButtonDraft {
-                                name: String::new(),
-                                first_row_name: current_row_editor.draft.name.clone(),
-                                first_row_url: current_row_editor.draft.url.clone(),
-                                first_row_hashtags: current_row_editor.draft.hashtags.clone(),
-                                first_row_comments: current_row_editor.draft.comments.clone(),
-                                first_row_secrets: current_row_editor.draft.secrets.clone(),
-                            },
-                        };
-
-                        row_editor.set(None);
-                        mutation_error.set(None);
-                        button_editor.set(Some(next_button_editor));
-                        return;
-                    }
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-                    spawn(async move {
-                        let result = move_row_server(
-                            ADMIN_AUTH(), source_button, original_name, destination, None,
-                        ).await;
-                        mutation_busy.set(false);
-                        match result {
-                            Ok(destination_name) => {
-                                row_editor.set(None);
+                    },
+                    on_new_tag_input: move |value: String| new_tag.set(value),
+                    on_add: move |_| {
+                        let clean = normalize_tag_for_ui(&new_tag());
+                        if clean.chars().count() >= 4 {
+                            let mut tags = tag_manager_draft();
+                            if !tags.iter().any(|tag| tag.eq_ignore_ascii_case(&clean)) {
+                                tags.push(clean);
+                                tags.sort_by_key(|tag| tag.to_lowercase());
+                                tag_manager_draft.set(tags);
+                                new_tag.set(String::new());
                                 mutation_error.set(None);
-                                selected_button_name.set(Some(destination_name));
-                                status_message.set(Some("URL moved successfully.".to_string()));
+                            } else {
+                                mutation_error.set(Some("That tag is already in the list.".to_string()));
+                            }
+                        } else {
+                            mutation_error.set(Some("Tags must contain at least 4 characters.".to_string()));
+                        }
+                    },
+                    on_remove: move |tag: String| {
+                        let mut tags = tag_manager_draft();
+                        tags.retain(|existing| existing != &tag);
+                        tag_manager_draft.set(tags);
+                    },
+                    on_save: move |_| async move {
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+                        let result = save_tags_server(ADMIN_AUTH(), tag_manager_draft()).await;
+                        mutation_busy.set(false);
+                        match result {
+                            Ok(()) => {
+                                tag_manager_open.set(false);
                                 *DASHBOARD_REFRESH_KEY.write() += 1;
                             }
                             Err(error) => mutation_error.set(Some(error.to_string())),
                         }
-                    });
-                },
-                on_add_tag: move |tag: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.hashtags = add_tag_to_text(&current.draft.hashtags, &tag);
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_hashtags_input: move |value: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.hashtags = value;
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_comments_input: move |value: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.comments = value;
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_secrets_input: move |value: String| {
-                    if let Some(mut current) = row_editor() {
-                        current.draft.secrets = value;
-                        row_editor.set(Some(current));
-                    }
-                },
-                on_save: move |_| async move {
-                    let Some(editor) = row_editor() else {
-                        return;
-                    };
+                    },
+                }
+            }
 
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
+            // ---------------------------------------------------------------------
+            // DRAG/DROP CONFIRMATION MODAL
+            // ---------------------------------------------------------------------
+            // This replaces the browser-native confirm popup. Escape is also
+            // handled by the existing global keydown handler above.
+            if let Some(confirmation) = reorder_confirmation() {
+                ReorderConfirmationModal {
+                    confirmation: confirmation.clone(),
+                    busy: mutation_busy(),
+                    on_cancel: move |_| {
+                        reorder_confirmation.set(None);
+                    },
+                    on_confirm: move |_| {
+                        let Some(confirmation) = reorder_confirmation() else {
+                            return;
+                        };
 
-                    let result = save_row_server(
-                        ADMIN_AUTH(),
-                        editor.button_name.clone(),
-                        ButtonRowInput {
-                            original_name: editor.original_name.clone(),
-                            name: editor.draft.name.clone(),
-                            kind: editor.draft.kind.clone(),
-                            url: editor.draft.url.clone(),
-                            hashtags: editor.draft.hashtags.clone(),
-                            comments: editor.draft.comments.clone(),
-                            secrets: editor.draft.secrets.clone(),
-                        },
-                    )
-                    .await;
+                        reorder_confirmation.set(None);
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+                        status_message.set(None);
 
-                    mutation_busy.set(false);
+                        spawn(async move {
+                            let result = match confirmation {
+                                ReorderConfirmation::Button {
+                                    from_index,
+                                    to_index,
+                                    ..
+                                } => reorder_buttons_server(
+                                    ADMIN_AUTH(),
+                                    from_index,
+                                    to_index,
+                                )
+                                .await,
+                                ReorderConfirmation::Row {
+                                    button_name,
+                                    from_index,
+                                    to_index,
+                                    ..
+                                } => reorder_rows_server(
+                                    ADMIN_AUTH(),
+                                    button_name,
+                                    from_index,
+                                    to_index,
+                                )
+                                .await,
+                            };
 
-                    match result {
-                        Ok(()) => {
-                            let edited_button_name = editor.button_name.clone();
+                            mutation_busy.set(false);
+
+                            match result {
+                                Ok(()) => *DASHBOARD_REFRESH_KEY.write() += 1,
+                                Err(error) => mutation_error.set(Some(error.to_string())),
+                            }
+                        });
+                    },
+                }
+            }
+
+            if let Some(editor) = button_editor() {
+                ButtonEditorModal {
+                    editor: editor.clone(),
+                    busy: mutation_busy(),
+                    error_message: mutation_error(),
+                    on_close: move |_| {
+                        button_editor.set(None);
+                        mutation_error.set(None);
+                    },
+                    on_name_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.name = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_first_row_name_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_name = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_first_row_url_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_url = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    available_tags: payload.available_tags.clone(),
+                    on_add_first_row_tag: move |tag: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_hashtags = add_tag_to_text(&current.draft.first_row_hashtags, &tag);
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_first_row_hashtags_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_hashtags = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_first_row_comments_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_comments = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_first_row_secrets_input: move |value: String| {
+                        if let Some(mut current) = button_editor() {
+                            current.draft.first_row_secrets = value;
+                            button_editor.set(Some(current));
+                        }
+                    },
+                    on_save: move |_| async move {
+                        let Some(editor) = button_editor() else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let credentials = ADMIN_AUTH();
+                        let result = match editor.mode {
+                            ButtonEditorMode::Create => {
+                                create_button_server(
+                                    credentials,
+                                    ButtonCreateInput {
+                                        name: editor.draft.name.clone(),
+                                        first_row: ButtonRowInput {
+                                            original_name: None,
+                                            name: editor.draft.first_row_name.clone(),
+                                            kind: RowKind::Link,
+                                            url: editor.draft.first_row_url.clone(),
+                                            hashtags: editor.draft.first_row_hashtags.clone(),
+                                            comments: editor.draft.first_row_comments.clone(),
+                                            secrets: editor.draft.first_row_secrets.clone(),
+                                        },
+                                    },
+                                )
+                                .await
+                            }
+                            ButtonEditorMode::Edit { original_name } => {
+                                rename_button_server(
+                                    credentials,
+                                    ButtonRenameInput {
+                                        original_name,
+                                        name: editor.draft.name.clone(),
+                                    },
+                                ).await
+                            }
+                            ButtonEditorMode::MoveToCreate { source_button_name, row_name } => {
+                                // Create the destination button using the normal button-creation
+                                // path, with the URL row already filled in by the row editor.
+                                //
+                                // The previous implementation called move_row_server with an
+                                // empty destination name and a separate new-button name. That
+                                // delegated the whole operation to the special move-to-new-button
+                                // path, which could move the row without reliably creating the
+                                // destination button.
+                                //
+                                // Create the new button first so the URL is safely stored there.
+                                // Only after creation succeeds do we remove the original row.
+                                // This ordering is deliberate: if creation fails, the original
+                                // URL remains untouched.
+                                let create_result = create_button_server(
+                                    credentials,
+                                    ButtonCreateInput {
+                                        name: editor.draft.name.clone(),
+                                        first_row: ButtonRowInput {
+                                            original_name: None,
+                                            name: editor.draft.first_row_name.clone(),
+                                            kind: RowKind::Link,
+                                            url: editor.draft.first_row_url.clone(),
+                                            hashtags: editor.draft.first_row_hashtags.clone(),
+                                            comments: editor.draft.first_row_comments.clone(),
+                                            secrets: editor.draft.first_row_secrets.clone(),
+                                        },
+                                    },
+                                )
+                                .await;
+
+                                match create_result {
+                                    Ok(()) => {
+                                        // The destination now exists and contains a copy of the
+                                        // complete row. Remove the source copy to finish the move.
+                                        delete_row_server(
+                                            ADMIN_AUTH(),
+                                            source_button_name,
+                                            row_name,
+                                        )
+                                        .await
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            }
+                        };
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(()) => {
+                                let saved_button_name = editor.draft.name.clone();
+
+                                button_editor.set(None);
+                                mutation_error.set(None);
+                                selected_button_name.set(Some(saved_button_name));
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
+                    on_clone: move |_| async move {
+                        let Some(editor) = button_editor() else {
+                            return;
+                        };
+
+                        let ButtonEditorMode::Edit { original_name } = editor.mode else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let result = clone_button_server(ADMIN_AUTH(), original_name).await;
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(cloned_name) => {
+                                button_editor.set(None);
+                                mutation_error.set(None);
+                                status_message.set(Some(format!(
+                                    "Cloned button as '{cloned_name}'."
+                                )));
+                                selected_button_name.set(Some(cloned_name));
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
+                    on_delete: move |_| async move {
+                        let Some(editor) = button_editor() else {
+                            return;
+                        };
+
+                        let ButtonEditorMode::Edit { original_name } = editor.mode else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let result = delete_button_server(ADMIN_AUTH(), original_name.clone()).await;
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(()) => {
+                                if selected_button_name() == Some(original_name.clone()) {
+                                    selected_button_name.set(None);
+                                }
+                                button_editor.set(None);
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
+                }
+            }
+
+            // Only show one modal at a time. When moving a URL into a new button,
+            // the click handler sets `button_editor` and clears `row_editor` in the
+            // same event. This guard also prevents a still-rendering row modal from
+            // sitting on top of the new Create Button modal during that transition.
+            if button_editor().is_none() {
+                if let Some(editor) = row_editor() {
+                    RowEditorModal {
+                    editor: editor.clone(),
+                    busy: mutation_busy(),
+                    error_message: mutation_error(),
+                    on_close: move |_| {
+                        row_editor.set(None);
+                        mutation_error.set(None);
+                    },
+                    on_kind_change: move |kind: RowKind| {
+                        if let Some(mut current) = row_editor() {
+                            // When switching a row to Divider, choose the first
+                            // DIVIDER number not already used by this button.
+                            // The parser requires divider names to contain uppercase
+                            // "DIVIDER", so we generate that exact spelling.
+                            if kind == RowKind::Divider && current.draft.kind != RowKind::Divider {
+                                let existing_rows = payload_for_divider_names.buttons
+                                    .iter()
+                                    .find(|button| button.name == current.button_name)
+                                    .map(|button| button.rows.as_slice())
+                                    .unwrap_or(&[]);
+                                current.draft.name = next_divider_name(existing_rows);
+                            }
+
+                            current.draft.kind = kind;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    on_name_input: move |value: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.name = value;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    on_url_input: move |value: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.url = value;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    available_tags: payload.available_tags.clone(),
+                    source_is_only_row: payload.buttons.iter()
+                        .find(|button| button.name == editor.button_name)
+                        .map(|button| button.rows.len() <= 1)
+                        .unwrap_or(false),
+                    available_buttons: {
+                        let mut names: Vec<String> = payload.buttons.iter()
+                            .map(|button| button.name.clone())
+                            .collect();
+                        names.sort_by_key(|name| name.to_lowercase());
+                        names
+                    },
+                    on_move: move |(destination, new_button_name): (String, Option<String>)| {
+                        let Some(current_row_editor) = row_editor() else {
+                            return;
+                        };
+                        let Some(original_name) = current_row_editor.original_name.clone() else {
+                            return;
+                        };
+                        let source_button = current_row_editor.button_name.clone();
+
+                        // Moving the only row would leave an invalid empty button. In
+                        // that special case, open the existing Edit Button modal so the
+                        // user can rename this button instead; the URL remains intact.
+                        let source_row_count = payload_for_move.buttons.iter()
+                            .find(|button| button.name == source_button)
+                            .map(|button| button.rows.len())
+                            .unwrap_or(0);
+                        if source_row_count <= 1 {
+                            // Close the row editor first, then open the button editor.
+                            // This avoids a render where both modal states are active.
+                            row_editor.set(None);
+                            mutation_error.set(None);
+                            button_editor.set(Some(ButtonEditorState {
+                                mode: ButtonEditorMode::Edit { original_name: source_button.clone() },
+                                draft: ButtonDraft {
+                                    name: source_button,
+                                    ..ButtonDraft::default()
+                                },
+                            }));
+                            return;
+                        }
+
+                        // Creating a destination uses the regular Create Button modal,
+                        // prefilled with the complete URL row. The row is not removed
+                        // from its source until the user confirms that modal.
+                        // Treat the explicit sentinel (and the empty destination used by
+                        // the create-new-button action) as a request to open the modal.
+                        // Do not rely only on `new_button_name`: the row modal's event
+                        // payload can vary while the destination select is changing, and
+                        // falling through would incorrectly move the URL to an existing
+                        // button without asking for a new button name.
+                        let wants_new_button = new_button_name.is_some()
+                            || destination == "__new_button__"
+                            || destination.is_empty();
+
+                        if wants_new_button {
+                            // Build the destination editor state before opening it.
+                            // Clear the row modal first so its state cannot mask or
+                            // interfere with the new-button modal during this update.
+                            let next_button_editor = ButtonEditorState {
+                                mode: ButtonEditorMode::MoveToCreate {
+                                    source_button_name: source_button,
+                                    row_name: original_name,
+                                },
+                                draft: ButtonDraft {
+                                    name: String::new(),
+                                    first_row_name: current_row_editor.draft.name.clone(),
+                                    first_row_url: current_row_editor.draft.url.clone(),
+                                    first_row_hashtags: current_row_editor.draft.hashtags.clone(),
+                                    first_row_comments: current_row_editor.draft.comments.clone(),
+                                    first_row_secrets: current_row_editor.draft.secrets.clone(),
+                                },
+                            };
 
                             row_editor.set(None);
                             mutation_error.set(None);
-                            selected_button_name.set(Some(edited_button_name));
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
+                            button_editor.set(Some(next_button_editor));
+                            return;
                         }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+                        spawn(async move {
+                            let result = move_row_server(
+                                ADMIN_AUTH(), source_button, original_name, destination, None,
+                            ).await;
+                            mutation_busy.set(false);
+                            match result {
+                                Ok(destination_name) => {
+                                    row_editor.set(None);
+                                    mutation_error.set(None);
+                                    selected_button_name.set(Some(destination_name));
+                                    status_message.set(Some("URL moved successfully.".to_string()));
+                                    *DASHBOARD_REFRESH_KEY.write() += 1;
+                                }
+                                Err(error) => mutation_error.set(Some(error.to_string())),
+                            }
+                        });
+                    },
+                    on_add_tag: move |tag: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.hashtags = add_tag_to_text(&current.draft.hashtags, &tag);
+                            row_editor.set(Some(current));
                         }
+                    },
+                    on_hashtags_input: move |value: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.hashtags = value;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    on_comments_input: move |value: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.comments = value;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    on_secrets_input: move |value: String| {
+                        if let Some(mut current) = row_editor() {
+                            current.draft.secrets = value;
+                            row_editor.set(Some(current));
+                        }
+                    },
+                    on_save: move |_| async move {
+                        let Some(editor) = row_editor() else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let result = save_row_server(
+                            ADMIN_AUTH(),
+                            editor.button_name.clone(),
+                            ButtonRowInput {
+                                original_name: editor.original_name.clone(),
+                                name: editor.draft.name.clone(),
+                                kind: editor.draft.kind.clone(),
+                                url: editor.draft.url.clone(),
+                                hashtags: editor.draft.hashtags.clone(),
+                                comments: editor.draft.comments.clone(),
+                                secrets: editor.draft.secrets.clone(),
+                            },
+                        )
+                        .await;
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(()) => {
+                                let edited_button_name = editor.button_name.clone();
+
+                                row_editor.set(None);
+                                mutation_error.set(None);
+                                selected_button_name.set(Some(edited_button_name));
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
+                    on_clone: move |_| async move {
+                        let Some(editor) = row_editor() else {
+                            return;
+                        };
+
+                        let Some(original_name) = editor.original_name.clone() else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let result = clone_row_server(
+                            ADMIN_AUTH(),
+                            editor.button_name.clone(),
+                            original_name,
+                        )
+                        .await;
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(cloned_name) => {
+                                let cloned_button_name = editor.button_name.clone();
+
+                                row_editor.set(None);
+                                mutation_error.set(None);
+                                status_message.set(Some(format!(
+                                    "Cloned row as '{cloned_name}'."
+                                )));
+                                selected_button_name.set(Some(cloned_button_name));
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
+                    on_delete: move |_| async move {
+                        let Some(editor) = row_editor() else {
+                            return;
+                        };
+
+                        let Some(original_name) = editor.original_name.clone() else {
+                            return;
+                        };
+
+                        mutation_busy.set(true);
+                        mutation_error.set(None);
+
+                        let result =
+                            delete_row_server(ADMIN_AUTH(), editor.button_name.clone(), original_name)
+                                .await;
+
+                        mutation_busy.set(false);
+
+                        match result {
+                            Ok(()) => {
+                                row_editor.set(None);
+                                *DASHBOARD_REFRESH_KEY.write() += 1;
+                            }
+                            Err(error) => {
+                                mutation_error.set(Some(error.to_string()));
+                            }
+                        }
+                    },
                     }
-                },
-                on_clone: move |_| async move {
-                    let Some(editor) = row_editor() else {
-                        return;
-                    };
-
-                    let Some(original_name) = editor.original_name.clone() else {
-                        return;
-                    };
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-
-                    let result = clone_row_server(
-                        ADMIN_AUTH(),
-                        editor.button_name.clone(),
-                        original_name,
-                    )
-                    .await;
-
-                    mutation_busy.set(false);
-
-                    match result {
-                        Ok(cloned_name) => {
-                            let cloned_button_name = editor.button_name.clone();
-
-                            row_editor.set(None);
-                            mutation_error.set(None);
-                            status_message.set(Some(format!(
-                                "Cloned row as '{cloned_name}'."
-                            )));
-                            selected_button_name.set(Some(cloned_button_name));
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
-                        }
-                    }
-                },
-                on_delete: move |_| async move {
-                    let Some(editor) = row_editor() else {
-                        return;
-                    };
-
-                    let Some(original_name) = editor.original_name.clone() else {
-                        return;
-                    };
-
-                    mutation_busy.set(true);
-                    mutation_error.set(None);
-
-                    let result =
-                        delete_row_server(ADMIN_AUTH(), editor.button_name.clone(), original_name)
-                            .await;
-
-                    mutation_busy.set(false);
-
-                    match result {
-                        Ok(()) => {
-                            row_editor.set(None);
-                            *DASHBOARD_REFRESH_KEY.write() += 1;
-                        }
-                        Err(error) => {
-                            mutation_error.set(Some(error.to_string()));
-                        }
-                    }
-                },
                 }
             }
         }
-    }
 }
 
 // Return the first free DIVIDER number for one button's current rows.
@@ -1747,11 +1768,19 @@ fn focus_first_modal_control(modal_id: &'static str) {
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
 
-    let Some(window) = web_sys::window() else { return; };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
     let callback = Closure::once(Box::new(move || {
-        let Some(window) = web_sys::window() else { return; };
-        let Some(document) = window.document() else { return; };
-        let Some(modal) = document.get_element_by_id(modal_id) else { return; };
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Some(modal) = document.get_element_by_id(modal_id) else {
+            return;
+        };
 
         // Do not steal focus from a field/button the user is already using.
         // The exception is the close X, which should never be the initial tab stop.
@@ -1789,8 +1818,12 @@ fn focus_first_modal_control(modal_id: &'static str) {
         // Confirmations and other field-less dialogs get a sensible button.
         if let Ok(buttons) = modal.query_selector_all("button:not([disabled])") {
             for index in 0..buttons.length() {
-                let Some(node) = buttons.item(index) else { continue; };
-                let Ok(button) = node.dyn_into::<web_sys::HtmlElement>() else { continue; };
+                let Some(node) = buttons.item(index) else {
+                    continue;
+                };
+                let Ok(button) = node.dyn_into::<web_sys::HtmlElement>() else {
+                    continue;
+                };
                 let text = button.text_content().unwrap_or_default();
                 let is_close = matches!(text.trim(), "×" | "✕" | "✖" | "X" | "x")
                     || button.get_attribute("aria-label").as_deref() == Some("Close")
@@ -1804,7 +1837,8 @@ fn focus_first_modal_control(modal_id: &'static str) {
     }) as Box<dyn FnOnce()>);
 
     let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-        callback.as_ref().unchecked_ref(), 0,
+        callback.as_ref().unchecked_ref(),
+        0,
     );
     callback.forget();
 }
@@ -2917,4 +2951,3 @@ async fn set_autosort_server(
         }
     })
 }
-

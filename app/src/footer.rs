@@ -90,7 +90,7 @@ pub fn Footer() -> Element {
         footer {
             // Keep the footer as a fixed-height sibling of the scrolling
             // main area.  The parent page uses a viewport-sized flex column.
-            class: "w-full shrink-0 mt-8 py-4
+            class: "w-full shrink-0 py-4
                     border-t border-gray-700
                     bg-gray-900
                     text-gray-400

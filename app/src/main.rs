@@ -592,6 +592,17 @@ fn App() -> Element {
     // -------------------------------------------------------------------------
     // RENDER
     // -------------------------------------------------------------------------
+    // Prefer the client-side cache, but on SSR (and the first paint before the
+    // cache-filling effect runs) read the live use_server_future value so the
+    // pre-WASM search index includes Buttonboard rows, not only navbar items.
+    let dashboard_for_navbar: Option<DashboardPayload> =
+        cached_dashboard().or_else(|| match &dashboard {
+            Ok(resource) => match &*resource.read_unchecked() {
+                Some(Ok(payload)) => Some(payload.clone()),
+                _ => None,
+            },
+            Err(_) => None,
+        });
 
     rsx! {
         // ---------------------------------------------------------------------
@@ -607,6 +618,14 @@ fn App() -> Element {
         // ---------------------------------------------------------------------
         document::Stylesheet {
             href: asset!("/assets/tailwind.css")
+        }
+
+        // Pre-WASM progressive search — MUST be first SSR frame (head is sealed
+        // after that).  Inline the JS so it runs without racing the WASM download
+        // on slow networks.  Index data is a hidden <pre> emitted by Navbar.
+        // children must be a single static string (Dioxus document::Script rule).
+        document::Script {
+            { include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/pre_wasm_search.js")) }
         }
 
         // ---------------------------------------------------------------------
@@ -630,7 +649,7 @@ fn App() -> Element {
                     // editing draft starts from the restored/saved tree too.
                     key: "navbar-{navbar_items_key(&items)}",
                     items: items.clone(),
-                    dashboard: cached_dashboard(),
+                    dashboard: dashboard_for_navbar.clone(),
                 }
             } else {
                 // Initial load only: don't panic or hide the rest of the page
@@ -642,7 +661,7 @@ fn App() -> Element {
                                 Navbar {
                                     key: "navbar-initial-{navbar_items_key(&items)}",
                                     items: items.clone(),
-                                    dashboard: cached_dashboard(),
+                                    dashboard: dashboard_for_navbar.clone(),
                                 }
                             },
                             Some(Err(_)) | None => rsx! { },

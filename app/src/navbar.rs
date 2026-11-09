@@ -15,6 +15,10 @@ const ADMIN_PASSWORD_STORAGE_KEY: &str = "admindash3_admin_password";
 const ADMIN_SESSION_EXPIRES_STORAGE_KEY: &str = "admindash3_admin_session_expires";
 const ADMIN_SESSION_DURATION_MS: f64 = 60.0 * 60.0 * 1000.0;
 
+// Buttons owns the Admin Usage card, while Navbar owns the manager dialog.
+// This one-shot request lets the card open that dialog without moving its state.
+pub static NAV_MANAGER_OPEN_REQUEST: GlobalSignal<bool> = Signal::global(|| false);
+
 fn browser_storage_get(key: &str) -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -603,6 +607,97 @@ struct SearchResult {
 // NAVBAR
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// PRE-WASM PROGRESSIVE SEARCH
+// -----------------------------------------------------------------------------
+//
+// Before the WebAssembly bundle finishes downloading and hydrating, the
+// server-rendered search input is still a normal HTML field.  Without help it
+// has no dropdown.
+//
+// We therefore embed a compact, secret-free search index (built from the same
+// Buttonboard + navbar data already available during SSR) and a tiny vanilla
+// JS progressive-enhancement script.  Typing works immediately: the script
+// filters the index and renders a temporary dropdown.  When WASM mounts it
+// sets `window.__AD3_WASM_READY = true`, removes the temporary dropdown, and
+// takes over with the full Dioxus search UI (including secrets for admins).
+// -----------------------------------------------------------------------------
+
+#[derive(Clone, serde::Serialize)]
+struct PreWasmSearchEntry {
+    button_name: String,
+    row_name: String,
+    url: String,
+    comments: String,
+    tags: Vec<String>,
+    /// True when a secret exists. Never includes the secret text itself
+    /// (SSR is always anonymous), matching the non-admin WASM "Secret hidden" chip.
+    has_secret: bool,
+    is_nav_item: bool,
+}
+
+fn collect_pre_wasm_nav_entries(items: &[NavItem], out: &mut Vec<PreWasmSearchEntry>) {
+    for item in items {
+        let url = item.url.clone().unwrap_or_default();
+        out.push(PreWasmSearchEntry {
+            button_name: "Navbar".to_string(),
+            row_name: item.name.clone(),
+            url: url.clone(),
+            comments: if url.is_empty() {
+                "Navbar menu item".to_string()
+            } else {
+                url
+            },
+            tags: Vec::new(),
+            has_secret: false,
+            is_nav_item: true,
+        });
+        collect_pre_wasm_nav_entries(&item.children, out);
+    }
+}
+
+fn build_pre_wasm_search_index(items: &[NavItem], dashboard: Option<&DashboardPayload>) -> String {
+    let mut entries: Vec<PreWasmSearchEntry> = Vec::new();
+
+    if let Some(dashboard) = dashboard {
+        for button in &dashboard.buttons {
+            for row in &button.rows {
+                if let ButtonRowView::Link {
+                    name,
+                    url,
+                    comments,
+                    hashtag_tokens,
+                    has_secret,
+                    ..
+                } = row
+                {
+                    entries.push(PreWasmSearchEntry {
+                        button_name: button.name.clone(),
+                        row_name: name.clone(),
+                        url: url.clone(),
+                        comments: comments.clone(),
+                        tags: hashtag_tokens.clone(),
+                        has_secret: *has_secret,
+                        is_nav_item: false,
+                    });
+                }
+            }
+        }
+    }
+
+    collect_pre_wasm_nav_entries(items, &mut entries);
+
+    // Keep the payload small and safe for embedding inside a <script> tag.
+    // serde_json already escapes quotes; we additionally break any accidental
+    // "</script>" sequence so the browser cannot terminate the script early.
+    let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
+    json.replace("</", "<\\/")
+}
+
+/// Vanilla JS progressive search.  Idempotent: safe if SSR re-emits it.
+// Progressive search JS is inlined into <head> from App (first SSR frame)
+// via document::Script + include_str!.  Index data is the hidden <pre>
+// emitted below.  Head scripts cannot be added from Navbar (too late).
 #[component]
 pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Element {
     let mut search = use_signal(String::new);
@@ -640,6 +735,21 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
     // One shared switch controls the default collapsed state of every manager row.
     let mut nav_tree_collapsed = use_signal(|| true);
     let mut nav_move_tree_collapsed = use_signal(|| false);
+
+    // The Admin Usage card lives in Buttons, but this component owns the
+    // navbar manager state. Consume its one-shot request and open the dialog.
+    let items_for_manager_request = items.clone();
+    use_effect(move || {
+        if NAV_MANAGER_OPEN_REQUEST() {
+            nav_tree_draft.set(items_for_manager_request.clone());
+            nav_manager_error.set(None);
+            nav_manager_status.set(None);
+            nav_form_open.set(false);
+            nav_move_path.set(None);
+            nav_manager_open.set(true);
+            *NAV_MANAGER_OPEN_REQUEST.write() = false;
+        }
+    });
 
     // New**: Shared tick. When it increments, every NavEntry closes its menu.
     // Used so a single outside-click can close all pinned dropdowns at once.
@@ -695,16 +805,75 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         };
 
         // -------------------------------------------------------------
-        // Restore search text.
+        // First inspect the input that is ALREADY in the browser DOM.
+        // -------------------------------------------------------------
+        // A user can type into the server-rendered search field before the
+        // WebAssembly app has mounted. In that case the live DOM value is
+        // newer than both the initial Rust signal and localStorage.
+        //
+        // Read it first so an older saved query cannot overwrite what the
+        // user has just typed.
+        let current_input_search = win
+            .document()
+            .and_then(|document| document.get_element_by_id("autocomplete_field"))
+            .and_then(|element| element.dyn_into::<web_sys::HtmlInputElement>().ok())
+            .map(|input| input.value())
+            .filter(|value| !value.trim().is_empty());
+
+        if let Some(current_search) = current_input_search {
+            search.set(current_search.clone());
+            search_open.set(true);
+            selected_index.set(0);
+            browser_storage_set(SEARCH_STORAGE_KEY, &current_search);
+            return;
+        }
+
+        // -------------------------------------------------------------
+        // No text in the live field: prepare to restore the saved query.
         // -------------------------------------------------------------
         if let Some(saved_search) = browser_storage_get(SEARCH_STORAGE_KEY) {
             if !saved_search.is_empty() {
-                search.set(saved_search.clone());
-                search_open.set(true);
-
-                // The input is rendered after this effect.  Selecting on the
-                // next browser tick makes F5 feel like the user clicked it.
+                // Do NOT update the search signal yet. The user may still be
+                // typing into the server-rendered input while WASM hydration
+                // finishes. Updating the controlled `value` now could replace
+                // that newer text with this older localStorage value.
+                //
+                // Wait until the next browser tick, then perform one final
+                // check of BOTH the live input and localStorage immediately
+                // before applying the cached query.
                 let callback = wasm_bindgen::closure::Closure::once(Box::new(move || {
+                    let live_search = window()
+                        .and_then(|win| win.document())
+                        .and_then(|document| document.get_element_by_id("autocomplete_field"))
+                        .and_then(|element| element.dyn_into::<web_sys::HtmlInputElement>().ok())
+                        .map(|input| input.value())
+                        .filter(|value| !value.trim().is_empty());
+
+                    // A value in the live field always wins. This includes
+                    // text entered after the first check above but before
+                    // this callback runs.
+                    if let Some(current_search) = live_search {
+                        search.set(current_search.clone());
+                        search_open.set(true);
+                        selected_index.set(0);
+                        browser_storage_set(SEARCH_STORAGE_KEY, &current_search);
+                        return;
+                    }
+
+                    // If the user typed and then cleared the field while
+                    // hydration was finishing, oninput removed this key.
+                    // Do not resurrect the stale query captured above.
+                    if browser_storage_get(SEARCH_STORAGE_KEY).as_deref()
+                        != Some(saved_search.as_str())
+                    {
+                        return;
+                    }
+
+                    // Nothing newer was entered: safely restore the saved
+                    // query, then focus/select it as before.
+                    search.set(saved_search);
+                    search_open.set(true);
+
                     if let Some(win) = window() {
                         if let Some(document) = win.document() {
                             if let Some(element) = document.get_element_by_id("autocomplete_field")
@@ -731,6 +900,27 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         // Admin authentication is restored synchronously by App before its
         // dashboard `use_server_future()` is created. Doing it there avoids
         // the anonymous-first-render -> admin-second-render F5 flicker.
+    });
+
+    // -------------------------------------------------------------------------
+    // PRE-WASM SEARCH HANDOFF
+    // -------------------------------------------------------------------------
+    //
+    // Tell the progressive-enhancement script that Dioxus/WASM now owns search,
+    // and remove any temporary dropdown it may have drawn.  The live input value
+    // is already adopted by the restore effect above.
+    // -------------------------------------------------------------------------
+    use_effect(move || {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = js_sys::eval(
+                r#"
+                window.__AD3_WASM_READY = true;
+                var el = document.getElementById("ad3-pre-wasm-results");
+                if (el) { el.remove(); }
+                "#,
+            );
+        }
     });
 
     // -------------------------------------------------------------------------
@@ -964,6 +1154,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
             let document_for_handler = document.clone();
 
             let mut search_open_for_handler = search_open;
+            let mut search_for_handler = search;
 
             let mut selected_index_for_handler = selected_index;
 
@@ -1119,6 +1310,10 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                     login_open_for_handler.set(false);
                     login_error_for_handler.set(None);
                     login_password_for_handler.set(String::new());
+
+                    // Re-open the results when the login dialog closes if a
+                    // search query is still present.
+                    search_open_for_handler.set(!search_for_handler.peek().trim().is_empty());
                     return;
                 }
 
@@ -1170,12 +1365,16 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                     event.prevent_default();
 
                     if ADMIN_AUTH.peek().is_admin() {
-                        search_open_for_handler.set(false);
+                        // Keep an existing search visible behind the logout
+                        // confirmation instead of discarding its open state.
+                        search_open_for_handler.set(!search_for_handler.peek().trim().is_empty());
                         selected_index_for_handler.set(0);
                         logout_open_for_handler.set(true);
                         login_error_for_handler.set(None);
                     } else if !*login_open_for_handler.peek() {
-                        search_open_for_handler.set(false);
+                        // Preserve the current query while the login modal is
+                        // displayed. The modal overlay sits above the results.
+                        search_open_for_handler.set(!search_for_handler.peek().trim().is_empty());
                         selected_index_for_handler.set(0);
                         login_error_for_handler.set(None);
                         login_username_for_handler.set(ADMIN_USERNAME.to_string());
@@ -1452,7 +1651,10 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
     // -------------------------------------------------------------------------
     // RENDER
     // -------------------------------------------------------------------------
-    let items_for_manager_button = items.clone();
+    // Compact, secret-free search index for the pre-WASM progressive script.
+    // Built on every render so SSR HTML always contains the current dashboard.
+    let pre_wasm_search_index = build_pre_wasm_search_index(&items, dashboard.as_ref());
+
     let items_for_desktop_edit = items.clone();
     let items_for_mobile_edit = items.clone();
 
@@ -1471,6 +1673,19 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
     }
 
     rsx! {
+        // ---------------------------------------------------------------------
+        // PRE-WASM PROGRESSIVE SEARCH INDEX
+        // ---------------------------------------------------------------------
+        // Hidden <pre> (not <script>): Dioxus SSR is unreliable about body
+        // <script> nodes.  The progressive JS reads textContent as JSON.
+        // Secrets are never present (SSR uses anonymous credentials).
+        pre {
+            id: "ad3-pre-wasm-search-index",
+            class: "hidden",
+            style: "display:none !important",
+            "aria-hidden": "true",
+            {pre_wasm_search_index.clone()}
+        }
 
         nav {
             class: if auth.is_admin() {
@@ -1662,6 +1877,24 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                         // hydrated by WASM, so request focus again on client mount.
                         autofocus: true,
                         onmounted: move |event| {
+                            // Read the real DOM value immediately. This catches
+                            // text entered before WASM finished mounting, which
+                            // is not necessarily present in the initial signal.
+                            let element = event.data().as_web_event();
+
+                            if let Some(input) =
+                                element.dyn_ref::<web_sys::HtmlInputElement>()
+                            {
+                                let current_value = input.value();
+
+                                if !current_value.trim().is_empty() {
+                                    search.set(current_value.clone());
+                                    search_open.set(true);
+                                    selected_index.set(0);
+                                    browser_storage_set(SEARCH_STORAGE_KEY, &current_value);
+                                }
+                            }
+
                             let _ = event.data().set_focus(true);
                         },
 
@@ -2382,59 +2615,17 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                 }
 
 
-                // -----------------------------------------------------------------
-                // ADMIN STATUS
-                // -----------------------------------------------------------------
+                // Administrators keep the normal authentication control here.
+                // Admin-only management controls now live in the Admin Usage card.
 
                 if auth.is_admin() {
 
-                    div {
-                        class:
-                            "flex items-center gap-2",
-
-                        span {
-                            class:
-                                "rounded-full
-                                 bg-green-600/20
-                                 px-3 py-1
-                                 text-xs font-semibold
-                                 text-green-200
-                                 border
-                                 border-green-500/30",
-
-                            "ADMIN"
-                        }
-
-
-                        button {
-                            class: "rounded-md border border-indigo-500/70 px-3 py-2 text-sm text-indigo-100 transition hover:bg-indigo-900",
-                            title: "Add, edit, remove, or nest navbar items (up to five levels).",
-                            onclick: move |_| {
-                                nav_tree_draft.set(items_for_manager_button.clone());
-                                nav_manager_error.set(None);
-                                nav_manager_status.set(None);
-                                nav_form_open.set(false);
-                                nav_move_path.set(None);
-                                nav_manager_open.set(true);
-                            },
-                            "Manage Navbar"
-                        }
-
-                        button {
-                            class:
-                                "rounded-md
-                                 border border-gray-700
-                                 px-3 py-2
-                                 text-sm text-white
-                                 transition
-                                 hover:bg-gray-800",
-
-                            onclick: move |_| {
-                                logout_open.set(true);
-                            },
-
-                            "Logout"
-                        }
+                    button {
+                        class: "rounded-md border border-gray-700 px-3 py-2 text-sm text-white transition hover:bg-gray-800",
+                        onclick: move |_| {
+                            logout_open.set(true);
+                        },
+                        "Logout"
                     }
 
                 } else {
@@ -2450,7 +2641,10 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                         onclick: move |_| {
 
-                            search_open.set(false);
+                            // Keep the current results mounted behind the
+                            // login dialog. They will be visible again when it
+                            // closes or authentication succeeds.
+                            search_open.set(!search().trim().is_empty());
                             login_open.set(true);
 
                             login_error.set(None);
@@ -2943,7 +3137,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
             div {
                 class:
-                    "fixed inset-0 z-50
+                    "fixed inset-0 z-[60]
                      flex items-center
                      justify-center
                      bg-black/50 p-4",
@@ -2951,6 +3145,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                 onclick: move |_| {
 
                     login_open.set(false);
+                    search_open.set(!search().trim().is_empty());
 
                     login_error.set(None);
                 },
@@ -3101,6 +3296,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                                     *DASHBOARD_REFRESH_KEY.write() += 1;
                                                     login_error.set(None);
                                                     login_open.set(false);
+                                                    search_open.set(!search().trim().is_empty());
                                                 }
                                                 Err(_) => {
                                                     login_error.set(Some(
@@ -3159,6 +3355,8 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                 login_open
                                     .set(false);
 
+                                search_open.set(!search().trim().is_empty());
+
                                 login_error
                                     .set(None);
                             },
@@ -3205,6 +3403,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                             *DASHBOARD_REFRESH_KEY.write() += 1;
                                             login_error.set(None);
                                             login_open.set(false);
+                                            search_open.set(!search().trim().is_empty());
                                         }
                                         Err(_) => {
                                             login_error.set(Some(
@@ -3446,7 +3645,7 @@ fn NavEntry(
             if *pinned.peek() {
                 if let Some(mut hold) = parent_pin_hold {
                     let next = (*hold.peek()).saturating_sub(1);
-                                    hold.set(next);
+                    hold.set(next);
                 }
             }
             pinned.set(false);
@@ -3726,5 +3925,3 @@ async fn authenticate_admin_server(
         })
     }
 }
-
-
