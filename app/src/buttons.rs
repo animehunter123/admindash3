@@ -761,7 +761,7 @@ pub fn Buttons(payload: DashboardPayload) -> Element {
                     let button_name = button.name.clone();
                     rsx! {
                         div {
-                            class: "fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+                            class: "fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
                             onclick: move |_| {
                                 selected_button_name.set(None);
                             },
@@ -1865,7 +1865,7 @@ fn TagManagerModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+            class: "fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "tag_manager_modal",
@@ -2007,7 +2007,7 @@ fn ReorderConfirmationModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4",
+            class: "fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4",
             div {
                 id: "reorder_confirmation_modal",
                 class: "modal-window relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl bg-white p-4 sm:p-6 shadow-2xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
@@ -2101,7 +2101,7 @@ fn ButtonEditorModal(
         div {
             // Keep the destination button modal above the row editor if Dioxus
             // briefly renders both during a state transition.
-            class: "fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+            class: "fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "button_editor_modal",
@@ -2327,7 +2327,7 @@ fn RowEditorModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+            class: "fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
 
             div {
                 id: "row_editor_modal",

@@ -61,5 +61,50 @@
         "children": []
       }
     ]
+  },
+  {
+    "name": "top01 (copy)",
+    "url": null,
+    "open_in_new_window": false,
+    "children": [
+      {
+        "name": "top01_#1",
+        "url": "http://google.com",
+        "open_in_new_window": true,
+        "children": []
+      },
+      {
+        "name": "top01_#2_submenu",
+        "url": null,
+        "open_in_new_window": false,
+        "children": [
+          {
+            "name": "www.google.com (unchecked iframe)",
+            "url": "https://www.google.com/",
+            "open_in_new_window": false,
+            "children": []
+          },
+          {
+            "name": "child1Child1Child2 (copy)",
+            "url": "https://www.sony.com",
+            "open_in_new_window": false,
+            "children": [
+              {
+                "name": "child1zig",
+                "url": "https://ziglang.org/",
+                "open_in_new_window": true,
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "top01_#03_google (in new window)",
+        "url": "https://google.com",
+        "open_in_new_window": true,
+        "children": []
+      }
+    ]
   }
 ]

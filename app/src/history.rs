@@ -711,7 +711,7 @@ pub fn HistoryPage() -> Element {
             // -----------------------------------------------------------------
             if let Some(filename) = revert_target() {
                 div {
-                    class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+                    class: "fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4",
                     onclick: move |_| {
                         if !busy() {
                             revert_target.set(None);
@@ -784,7 +784,7 @@ pub fn HistoryPage() -> Element {
             // -----------------------------------------------------------------
             if let Some(filename) = delete_target() {
                 div {
-                    class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+                    class: "fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4",
                     onclick: move |_| {
                         if !busy() {
                             delete_target.set(None);
@@ -858,7 +858,7 @@ pub fn HistoryPage() -> Element {
             // can see exactly what will be deleted before confirming.
             // -----------------------------------------------------------------
             if show_clear_modal() {
-                div { class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
+                div { class: "fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4",
                     div { class: "flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl",
                         div { class: "border-b border-gray-200 p-5",
                             div { class: "flex items-start justify-between gap-4",

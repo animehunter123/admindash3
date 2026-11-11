@@ -671,12 +671,16 @@ fn build_pre_wasm_search_index(items: &[NavItem], dashboard: Option<&DashboardPa
                     ..
                 } = row
                 {
+                    let mut tags = hashtag_tokens.clone();
+                    // Same lexicographic order the progressive JS uses for its
+                    // secondary sort key, so pre-WASM and WASM hit order match.
+                    tags.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
                     entries.push(PreWasmSearchEntry {
                         button_name: button.name.clone(),
                         row_name: name.clone(),
                         url: url.clone(),
                         comments: comments.clone(),
-                        tags: hashtag_tokens.clone(),
+                        tags,
                         has_secret: *has_secret,
                         is_nav_item: false,
                     });
@@ -1532,6 +1536,12 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                                 return None;
                             }
 
+                            {
+                            // Always derive all_tags from hashtag_tokens (same source
+                            // the pre-WASM index embeds). Sorting case-insensitively
+                            // keeps the secondary sort key identical on both sides.
+                            let mut all_tags = hashtag_tokens.clone();
+                            all_tags.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
                             Some(SearchResult {
                                 button_name: button.name.clone(),
 
@@ -1541,11 +1551,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                                 comments: comments.clone(),
 
-                                all_tags: if hashtags.is_empty() {
-                                    Vec::new()
-                                } else {
-                                    hashtag_tokens.clone()
-                                },
+                                all_tags,
 
                                 matched_tags,
 
@@ -1555,6 +1561,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
                                 is_nav_item: false,
                             })
+                            }
                         }
                     }
                 })
@@ -1593,7 +1600,8 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         collect_nav_hits(&items, &normalized_query, &mut matches);
     }
 
-    // Sort: button name → hashtags → URL / row name
+    // Sort: button name → hashtags → row name → url
+    // (url is a final deterministic tie-break; pre-WASM uses the same order.)
     matches.sort_by(|a, b| {
         a.button_name
             .to_lowercase()
@@ -1604,6 +1612,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                 a_tags.cmp(&b_tags)
             })
             .then_with(|| a.row_name.to_lowercase().cmp(&b.row_name.to_lowercase()))
+            .then_with(|| a.url.to_lowercase().cmp(&b.url.to_lowercase()))
     });
 
     // -------------------------------------------------------------------------
@@ -2670,7 +2679,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         if nav_manager_open() {
             div {
                 id: "nav_manager_modal",
-                class: "fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4",
+                class: "fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4",
                 // Match the Buttonboard editors: clicking the backdrop must not
                 // silently discard a draft. Use Close or Cancel intentionally.
                 onclick: move |_| {},
@@ -2828,7 +2837,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         if nav_form_open() {
             div {
                 id: "nav_editor_modal",
-                class: "fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4",
+                class: "fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4",
                 // Don't lose typed text from an accidental outside click.
                 onclick: move |_| {},
                 div {
@@ -2875,7 +2884,52 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                             }
                         }
                     }
-                    div { class: "mt-5 flex flex-wrap justify-end gap-2",
+                    div { class: "mt-5 flex flex-wrap items-center justify-between gap-2",
+                        div { class: "flex flex-wrap gap-2",
+                            // Delete only when editing an existing item (not when adding).
+                            // Reuses the same confirmation modal as the manager tree.
+                            if nav_form_path().is_some() {
+                                button {
+                                    class: "rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50",
+                                    title: "Clone this navbar item (and its children) into the draft, placed just after the original",
+                                    onclick: move |_| {
+                                        let Some(path) = nav_form_path() else {
+                                            return;
+                                        };
+                                        let mut tree = nav_tree_draft();
+                                        if let Some(mut cloned) = nav_item_at_path(&tree, &path).cloned() {
+                                            // Match the manager-tree Clone action.
+                                            cloned.name.push_str(" (copy)");
+                                            if let Some(siblings) = nav_siblings_mut(&mut tree, &path) {
+                                                let index = *path.last().unwrap_or(&0);
+                                                let insert_at = (index + 1).min(siblings.len());
+                                                siblings.insert(insert_at, cloned);
+                                                nav_tree_draft.set(tree);
+                                                nav_form_open.set(false);
+                                                nav_manager_error.set(None);
+                                                nav_manager_status.set(Some(
+                                                    "Navbar item cloned. Remember to save your changes.".to_string(),
+                                                ));
+                                            }
+                                        }
+                                    },
+                                    "Clone Item"
+                                }
+                                button {
+                                    class: "rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50",
+                                    title: "Delete this navbar item and its nested children from the draft",
+                                    onclick: move |_| {
+                                        if let Some(path) = nav_form_path() {
+                                            nav_form_open.set(false);
+                                            nav_delete_path.set(Some(path));
+                                            nav_manager_error.set(None);
+                                        }
+                                    },
+                                    "Delete Item"
+                                }
+                            }
+                        }
+                        div { class: "flex flex-wrap gap-2",
                         button { class: "rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50", onclick: move |_| nav_form_open.set(false), "Cancel" }
                         button {
                             class: if nav_form_name().trim().is_empty() { "rounded-md bg-gray-400 px-4 py-2 text-sm font-semibold text-white cursor-not-allowed" } else { "rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" },
@@ -2919,6 +2973,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
                             },
                             "Save Item"
                         }
+                        }
                     }
                 }
             }
@@ -2928,7 +2983,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         if let Some(delete_path) = nav_delete_path() {
             div {
                 id: "nav_delete_modal",
-                class: "fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4",
+                class: "fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4",
                 onclick: move |_| nav_delete_path.set(None),
                 div {
                     class: "modal-window w-full max-w-md rounded-lg bg-white p-5 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
@@ -2958,7 +3013,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
         if let Some(source_path) = nav_move_path() {
             div {
                 id: "nav_move_modal",
-                class: "fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4",
+                class: "fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4",
                 onclick: move |_| nav_move_path.set(None),
                 div {
                     class: "modal-window w-full max-w-lg rounded-lg bg-white p-5 shadow-xl [&_label]:block [&_label]:w-full [&_label]:min-w-0 [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:box-border [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:max-w-full [&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:min-w-0 [&_textarea]:box-border [&_textarea]:block [&_textarea]:w-full [&_textarea]:max-w-full [&_textarea]:min-w-0 [&_select]:box-border [&_select]:w-full [&_select]:max-w-full [&_select]:min-w-0",
@@ -3054,7 +3109,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
         if logout_open() {
             div {
-                class: "fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
+                class: "fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-4",
                 onclick: move |_| logout_open.set(false),
 
                 div {
@@ -3137,7 +3192,7 @@ pub fn Navbar(items: Vec<NavItem>, dashboard: Option<DashboardPayload>) -> Eleme
 
             div {
                 class:
-                    "fixed inset-0 z-[60]
+                    "fixed inset-0 z-[100]
                      flex items-center
                      justify-center
                      bg-black/50 p-4",

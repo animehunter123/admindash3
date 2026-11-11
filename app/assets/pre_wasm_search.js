@@ -55,22 +55,38 @@
 
   // hashtag_tokens in Rust come from a BTreeSet → sorted lexicographically.
   // Re-sort here so secondary sort keys always match WASM even if JSON order drifts.
+  // Case-insensitive lexicographic order — mirrors Rust
+  //   tags.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()))
+  // used for the secondary sort key in navbar.rs.
   function sortedTags(tags) {
     var copy = (tags || []).slice();
     copy.sort(function (a, b) {
-      var aa = String(a), bb = String(b);
+      var aa = String(a).toLowerCase(), bb = String(b).toLowerCase();
       if (aa < bb) return -1;
       if (aa > bb) return 1;
+      // Stable tie-break on original spelling so equal-insensitive tags
+      // still produce a deterministic join() string.
+      var ao = String(a), bo = String(b);
+      if (ao < bo) return -1;
+      if (ao > bo) return 1;
       return 0;
     });
     return copy;
   }
 
-  // Matching (navbar.rs):
-  //   Buttonboard link: button name OR row name OR any hashtag token
-  //   Navbar item:      item name OR url  (tags unused)
-  //   Dividers: never
-  // Does NOT search comments or (for Buttonboard) the URL field.
+  // Matching must mirror navbar.rs exactly so the progressive dropdown and the
+  // WASM dropdown contain the same rows (and therefore sort into the same order).
+  //
+  //   Buttonboard link (SearchResult path):
+  //     button name OR row name OR any hashtag token
+  //     (URL is NOT searched for Buttonboard)
+  //   Navbar item (collect_nav_hits):
+  //     item name OR url ONLY
+  //     button_name is the display label "Navbar" and must NOT be used as a
+  //     match field — otherwise a query like "a" matches every nav item because
+  //     "Navbar".includes("a"), which WASM never does.
+  //   Dividers: never present in the index
+  //   Comments: never searched
   function filter(rawQuery) {
     var q = normQuery(rawQuery);
     if (!q) return [];
@@ -79,17 +95,22 @@
     for (var i = 0; i < data.length; i++) {
       var e = data[i];
       var tags = sortedTags(e.tags);
-      var buttonOk = norm(e.button_name).indexOf(q) !== -1;
       var nameOk = norm(e.row_name).indexOf(q) !== -1;
       var matchedTags = [];
-      for (var t = 0; t < tags.length; t++) {
-        if (tagKey(tags[t]).indexOf(q) !== -1) matchedTags.push(tags[t]);
-      }
+      var buttonOk = false;
       var urlOk = false;
-      // Only navbar items match on URL (collect_nav_hits in navbar.rs)
+
       if (e.is_nav_item) {
+        // collect_nav_hits: name OR url only
         urlOk = norm(e.url || "").indexOf(q) !== -1;
+      } else {
+        // Buttonboard: button name, row name, hashtags
+        buttonOk = norm(e.button_name).indexOf(q) !== -1;
+        for (var t = 0; t < tags.length; t++) {
+          if (tagKey(tags[t]).indexOf(q) !== -1) matchedTags.push(tags[t]);
+        }
       }
+
       if (!buttonOk && !nameOk && !matchedTags.length && !urlOk) continue;
       hits.push({
         button_name: e.button_name,
@@ -106,6 +127,13 @@
     //   button_name.to_lowercase()
     //   then all_tags.join(" ").to_lowercase()
     //   then row_name.to_lowercase()
+    // Mirror navbar.rs matches.sort_by:
+    //   button_name.to_lowercase()
+    //   then all_tags.join(" ").to_lowercase()
+    //   then row_name.to_lowercase()
+    //   then url.to_lowercase() as a deterministic final tie-break so pre-WASM
+    //   and WASM agree even when the first three keys collide (e.g. two navbar
+    //   items with the same label under different parents).
     hits.sort(function (a, b) {
       var ab = norm(a.button_name);
       var bb = norm(b.button_name);
@@ -119,6 +147,10 @@
       var bn = norm(b.row_name);
       if (an < bn) return -1;
       if (an > bn) return 1;
+      var au = norm(a.url);
+      var bu = norm(b.url);
+      if (au < bu) return -1;
+      if (au > bu) return 1;
       return 0;
     });
     return hits;

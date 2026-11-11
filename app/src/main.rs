@@ -318,6 +318,10 @@ fn App() -> Element {
                 set_modal_style(&modal, "overflow", "auto");
                 set_modal_style(&modal, "margin", "0");
                 set_modal_style(&modal, "transform", "none");
+                // Keep dragged modals above the navbar (z-50 brand/search/menus).
+                // Without an explicit z-index a position:fixed panel can fall
+                // behind those controls when dragged upward into the header.
+                set_modal_style(&modal, "z-index", "200");
 
                 // Store the modal and where inside it the user clicked.
                 //
@@ -406,6 +410,141 @@ fn App() -> Element {
             let _ = document
                 .add_event_listener_with_callback("mouseleave", up.as_ref().unchecked_ref());
 
+            // -----------------------------------------------------------------
+            // DOUBLE-CLICK: maximize / restore every modal-window panel.
+            // -----------------------------------------------------------------
+            //
+            // Maximize uses ~80% of the middle content area so the navbar and
+            // footer stay visible. A second double-click restores the geometry
+            // captured just before the maximize.
+            let window_for_dbl = window.clone();
+            let dbl = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+                let Some(target) = event
+                    .target()
+                    .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
+                else {
+                    return;
+                };
+
+                let mut current = Some(target.clone());
+                let mut modal: Option<web_sys::HtmlElement> = None;
+                while let Some(element) = current {
+                    let classes = element.get_attribute("class").unwrap_or_default();
+                    if classes
+                        .split_whitespace()
+                        .any(|class| class == "modal-window")
+                    {
+                        modal = element.dyn_into::<web_sys::HtmlElement>().ok();
+                        break;
+                    }
+                    current = element.parent_element();
+                }
+                let Some(modal) = modal else {
+                    return;
+                };
+
+                // Only the top strip (same 48px drag handle) toggles maximize.
+                let rect = modal.get_bounding_client_rect();
+                if event.client_y() as f64 - rect.top() > 48.0 {
+                    return;
+                }
+
+                // Ignore interactive controls in the header.
+                let tag = target.tag_name().to_ascii_lowercase();
+                if ["button", "input", "select", "textarea", "a"].contains(&tag.as_str()) {
+                    return;
+                }
+
+                let maximized = modal
+                    .get_attribute("data-ad3-maximized")
+                    .as_deref()
+                    == Some("1");
+
+                if maximized {
+                    // Restore previous geometry saved on the element.
+                    let prev_left = modal
+                        .get_attribute("data-ad3-prev-left")
+                        .unwrap_or_else(|| format!("{}px", rect.left()));
+                    let prev_top = modal
+                        .get_attribute("data-ad3-prev-top")
+                        .unwrap_or_else(|| format!("{}px", rect.top()));
+                    let prev_width = modal
+                        .get_attribute("data-ad3-prev-width")
+                        .unwrap_or_else(|| format!("{}px", rect.width()));
+                    let prev_height = modal
+                        .get_attribute("data-ad3-prev-height")
+                        .unwrap_or_else(|| format!("{}px", rect.height()));
+
+                    set_modal_style(&modal, "position", "fixed");
+                    set_modal_style(&modal, "left", &prev_left);
+                    set_modal_style(&modal, "top", &prev_top);
+                    set_modal_style(&modal, "width", &prev_width);
+                    set_modal_style(&modal, "height", &prev_height);
+                    set_modal_style(&modal, "max-width", "none");
+                    set_modal_style(&modal, "max-height", "none");
+                    set_modal_style(&modal, "overflow", "auto");
+                    set_modal_style(&modal, "margin", "0");
+                    set_modal_style(&modal, "transform", "none");
+                    set_modal_style(&modal, "z-index", "200");
+                    // Prefer set_attribute over remove_attribute: some web-sys
+                    // feature sets omit the remove_attribute JS import and the
+                    // WASM module then fails to link at runtime.
+                    let _ = modal.set_attribute("data-ad3-maximized", "0");
+                    event.prevent_default();
+                    return;
+                }
+
+                // Save current geometry for restore.
+                let _ = modal.set_attribute("data-ad3-prev-left", &format!("{}px", rect.left()));
+                let _ = modal.set_attribute("data-ad3-prev-top", &format!("{}px", rect.top()));
+                let _ = modal.set_attribute(
+                    "data-ad3-prev-width",
+                    &format!("{}px", rect.width()),
+                );
+                let _ = modal.set_attribute(
+                    "data-ad3-prev-height",
+                    &format!("{}px", rect.height()),
+                );
+                let _ = modal.set_attribute("data-ad3-maximized", "1");
+
+                let viewport_width = window_for_dbl
+                    .inner_width()
+                    .ok()
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(1200.0);
+                let viewport_height = window_for_dbl
+                    .inner_height()
+                    .ok()
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(800.0);
+
+                // Leave room for the sticky navbar (~4rem) and footer (~3rem)
+                // so both stay visible around an ~80% middle-area panel.
+                let nav_reserve = 64.0;
+                let foot_reserve = 48.0;
+                let avail_h = (viewport_height - nav_reserve - foot_reserve).max(200.0);
+                let target_h = (avail_h * 0.90).max(200.0);
+                let target_w = (viewport_width * 0.80).max(280.0);
+                let left = ((viewport_width - target_w) / 2.0).max(0.0);
+                let top = nav_reserve + ((avail_h - target_h) / 2.0).max(0.0);
+
+                set_modal_style(&modal, "position", "fixed");
+                set_modal_style(&modal, "left", &format!("{left}px"));
+                set_modal_style(&modal, "top", &format!("{top}px"));
+                set_modal_style(&modal, "width", &format!("{target_w}px"));
+                set_modal_style(&modal, "height", &format!("{target_h}px"));
+                set_modal_style(&modal, "max-width", "none");
+                set_modal_style(&modal, "max-height", "none");
+                set_modal_style(&modal, "overflow", "auto");
+                set_modal_style(&modal, "margin", "0");
+                set_modal_style(&modal, "transform", "none");
+                set_modal_style(&modal, "z-index", "200");
+                event.prevent_default();
+            }) as Box<dyn FnMut(web_sys::MouseEvent)>);
+
+            let _ = document
+                .add_event_listener_with_callback("dblclick", dbl.as_ref().unchecked_ref());
+
             // Clean up browser event listeners when this effect is dropped.
             //
             // Removing listeners matters because the callbacks hold references
@@ -429,6 +568,9 @@ fn App() -> Element {
 
                 let _ = document_for_cleanup
                     .remove_event_listener_with_callback("mouseleave", up.as_ref().unchecked_ref());
+
+                let _ = document_for_cleanup
+                    .remove_event_listener_with_callback("dblclick", dbl.as_ref().unchecked_ref());
             });
         });
     }
