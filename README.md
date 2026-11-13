@@ -126,3 +126,5 @@ next things IN DEVELOPMENT:
 06:01:39 [server] [200] /api/load_dashboard10774796528335652188
 
 - the pre-wasm sorting is now correct, but if the user scrolled halfway through it and then the wasm mounted, it should remain halfway through scrolled after the wasm mount but data updated correctly like keys of whatever after the wasm mount
+
+- if you are on the main buttonboard page the login logout AND searchbox should appear in navbar otherwise if iframe or whatever it should be hidden and then appear again if i navigate back to the main page
